@@ -1,9 +1,9 @@
-# Cinematic Property Reel Generator — Phase 1
+# Cinematic Property Reel Generator — Phase 1 + Phase 2
 
-Paste a property listing URL (or upload photos directly) to import a
-property into the app. This is the foundation Phase 1 build: URL input,
-platform detection, and image storage. Vision analysis, Higgsfield video
-generation, and reel assembly are later phases.
+Paste a property listing URL (or upload photos directly), analyze the
+photos with Claude Vision, and edit the resulting cinematic storyboard
+before any Higgsfield credits are spent. Higgsfield video generation and
+final reel assembly are later phases.
 
 ## Supported listing platforms
 
@@ -43,9 +43,35 @@ npm run build          # next build (also runs TypeScript)
 
 ## Environment variables
 
-None are required to boot Phase 1 — there is no database, queue, or external
-API call yet. `.env.example` is intentionally not present in Phase 1; it
-will be introduced when Phase 2 (Claude Vision) needs `ANTHROPIC_API_KEY`.
+See `.env.example`. None are required to boot the app or use URL import /
+photo upload — only `ANTHROPIC_API_KEY` is required, and only at the moment
+`POST /api/projects/[id]/analyze` is called (a missing key returns a clean
+503, not a boot failure). `HF_CREDENTIALS`/`HF_API_KEY`+`HF_API_SECRET` are
+listed for Phase 3 but unused until then.
+
+## Phase 2: photo analysis and storyboard
+
+- `POST /api/projects/[id]/analyze` — runs `ClaudeVisionProvider` (official
+  `@anthropic-ai/sdk`, tool-use forced structured output, zod-validated,
+  one repair-retry on schema failure) over every image in the project.
+  Requires `ANTHROPIC_API_KEY`. **Not live-tested in this environment** — no
+  API key is available here — but the schema validation, repair-retry logic,
+  and error handling are unit-tested against a mocked SDK client
+  (`src/lib/vision/claude-vision-provider.test.ts`), and the endpoint's
+  clean-failure behavior (503 when unconfigured) was verified live.
+- `POST /api/projects/[id]/storyboard` — builds an ordered ~6-10 scene
+  storyboard from the analyzed photos (`src/lib/storyboard/shot-selector.ts`):
+  ranks by composite quality/marketing/cinematic score, caps repetitive room
+  types (spec example: eight bedroom photos must not become a five-bedroom-
+  shot reel — verified by test), then orders into a natural walkthrough
+  sequence without forcing room types the property doesn't have.
+- `PATCH /api/projects/[id]/storyboard` — replaces the storyboard with a
+  user-edited version (reorder, remove, replace camera motion, edit prompt,
+  change duration, approve) after zod validation. No Higgsfield credit is
+  spent by anything in Phase 2.
+- Higgsfield prompts (`src/lib/storyboard/prompt-generator.ts`) always start
+  from a fixed property-preservation instruction, with the scene's camera
+  motion appended — never freeform per-scene text.
 
 ## Architecture notes
 

@@ -30,6 +30,21 @@ function extensionForMime(mimeType: string): string {
   }
 }
 
+/** Inverse of `extensionForMime` — used when reading a stored file back off disk. */
+export function mimeForExtension(extension: string): "image/jpeg" | "image/png" | "image/webp" {
+  switch (extension) {
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".png":
+      return "image/png";
+    case ".webp":
+      return "image/webp";
+    default:
+      throw new UnsupportedImageError(`Unsupported file extension: ${extension}`);
+  }
+}
+
 /**
  * Downloads a single remote image (Technical Plan §14-§15): validates the
  * URL is not an SSRF vector, caps response size, and validates the actual

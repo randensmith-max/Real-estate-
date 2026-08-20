@@ -2,6 +2,8 @@ import { mkdir, writeFile, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { ImportedListing } from "../listing/types";
+import type { ImageAnalysis } from "../vision/schema";
+import type { StoryboardScene } from "../storyboard/types";
 
 export type ProjectSourceType = "url_import" | "manual_upload";
 
@@ -10,6 +12,10 @@ export interface ProjectRecord {
   createdAt: string;
   sourceType: ProjectSourceType;
   listing: ImportedListing;
+  /** Populated by POST /api/projects/[id]/analyze. `imageAnalysis.imageId` is the servable image path. */
+  imageAnalyses?: ImageAnalysis[];
+  /** Populated by POST /api/projects/[id]/storyboard, then user-editable via PATCH. */
+  storyboard?: StoryboardScene[];
 }
 
 /**

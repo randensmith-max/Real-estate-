@@ -2,6 +2,9 @@
 
 import { useState, type FormEvent } from "react";
 import type { ImportedListing } from "@/lib/listing/types";
+import type { ImageAnalysis } from "@/lib/vision/schema";
+import type { StoryboardScene } from "@/lib/storyboard/types";
+import { StoryboardEditor } from "./components/StoryboardEditor";
 
 type ImportErrorResponse = {
   error: string;
@@ -15,12 +18,25 @@ type ImportSuccessResponse = {
   listing: ImportedListing;
 };
 
+type AnalyzeResponse = {
+  projectId: string;
+  imageAnalyses: ImageAnalysis[];
+  failures: { imageId: string; message: string }[];
+};
+
+type StoryboardResponse = {
+  projectId: string;
+  storyboard: StoryboardScene[];
+};
+
 export default function Home() {
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showFallback, setShowFallback] = useState(false);
   const [project, setProject] = useState<ImportSuccessResponse | null>(null);
+  const [analyses, setAnalyses] = useState<ImageAnalysis[] | null>(null);
+  const [storyboard, setStoryboard] = useState<StoryboardScene[] | null>(null);
 
   async function handleImport(event: FormEvent) {
     event.preventDefault();
@@ -44,6 +60,8 @@ export default function Home() {
       }
 
       setProject(data);
+      setAnalyses(null);
+      setStoryboard(null);
     } catch {
       setErrorMessage("Something went wrong contacting the server.");
     } finally {
@@ -69,8 +87,81 @@ export default function Home() {
 
       setProject(data);
       setShowFallback(false);
+      setAnalyses(null);
+      setStoryboard(null);
     } catch {
       setErrorMessage("Something went wrong uploading photos.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleAnalyze() {
+    if (!project) return;
+    setBusy(true);
+    setErrorMessage(null);
+
+    try {
+      const res = await fetch(`/api/projects/${project.projectId}/analyze`, { method: "POST" });
+      const data = (await res.json()) as AnalyzeResponse | ImportErrorResponse;
+
+      if (!res.ok || "error" in data) {
+        setErrorMessage((data as ImportErrorResponse).message);
+        return;
+      }
+
+      setAnalyses(data.imageAnalyses);
+      setStoryboard(null);
+    } catch {
+      setErrorMessage("Something went wrong analyzing photos.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleGenerateStoryboard() {
+    if (!project) return;
+    setBusy(true);
+    setErrorMessage(null);
+
+    try {
+      const res = await fetch(`/api/projects/${project.projectId}/storyboard`, { method: "POST" });
+      const data = (await res.json()) as StoryboardResponse | ImportErrorResponse;
+
+      if (!res.ok || "error" in data) {
+        setErrorMessage((data as ImportErrorResponse).message);
+        return;
+      }
+
+      setStoryboard(data.storyboard);
+    } catch {
+      setErrorMessage("Something went wrong building the storyboard.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveStoryboard(scenes: StoryboardScene[]) {
+    if (!project) return;
+    setBusy(true);
+    setErrorMessage(null);
+
+    try {
+      const res = await fetch(`/api/projects/${project.projectId}/storyboard`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storyboard: scenes }),
+      });
+      const data = (await res.json()) as StoryboardResponse | ImportErrorResponse;
+
+      if (!res.ok || "error" in data) {
+        setErrorMessage((data as ImportErrorResponse).message);
+        return;
+      }
+
+      setStoryboard(data.storyboard);
+    } catch {
+      setErrorMessage("Something went wrong saving the storyboard.");
     } finally {
       setBusy(false);
     }
@@ -161,7 +252,35 @@ export default function Home() {
               <img key={src} src={src} alt="Property" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 8 }} />
             ))}
           </div>
+
+          <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+            <button type="button" onClick={handleAnalyze} disabled={busy} style={primaryBtn}>
+              {analyses ? "Re-analyze Photos" : "Analyze Photos"}
+            </button>
+            {analyses && (
+              <button type="button" onClick={handleGenerateStoryboard} disabled={busy} style={secondaryBtn}>
+                Generate Storyboard
+              </button>
+            )}
+          </div>
+
+          {analyses && (
+            <p style={{ color: "#666", marginTop: 8, fontSize: 14 }}>
+              {analyses.length} photo{analyses.length === 1 ? "" : "s"} analyzed &middot;{" "}
+              {analyses.filter((a) => a.useInReel).length} recommended for the reel
+            </p>
+          )}
         </section>
+      )}
+
+      {storyboard && (
+        <StoryboardEditor
+          scenes={storyboard}
+          onChange={setStoryboard}
+          onSave={() => saveStoryboard(storyboard)}
+          onApproveAll={() => saveStoryboard(storyboard.map((s) => ({ ...s, status: "approved" })))}
+          busy={busy}
+        />
       )}
     </main>
   );
@@ -173,4 +292,23 @@ const inputStyle: React.CSSProperties = {
   border: "1px solid #ccc",
   borderRadius: 8,
   flex: 1,
+};
+
+const primaryBtn: React.CSSProperties = {
+  padding: "10px 16px",
+  fontWeight: 600,
+  borderRadius: 8,
+  border: "none",
+  background: "#111",
+  color: "#fff",
+  cursor: "pointer",
+};
+
+const secondaryBtn: React.CSSProperties = {
+  padding: "10px 16px",
+  fontWeight: 600,
+  borderRadius: 8,
+  border: "1px solid #111",
+  background: "#fff",
+  cursor: "pointer",
 };
