@@ -1,10 +1,10 @@
-# Cinematic Property Reel Generator — Phases 1-3
+# Cinematic Property Reel Generator — Phases 1-4
 
 Paste a property listing URL (or upload photos directly), analyze the
-photos with Claude Vision, edit the resulting cinematic storyboard, then
-generate real Higgsfield video clips per approved scene — reviewing,
-approving, rejecting, or regenerating each one individually. Final reel
-assembly (FFmpeg) and branding (HyperFrames) are later phases.
+photos with Claude Vision, edit the resulting cinematic storyboard, generate
+real Higgsfield video clips per approved scene, then assemble every
+generated clip into one downloadable 1080×1920 MP4 reel. Branding
+(HyperFrames) is the last remaining phase.
 
 ## Supported listing platforms
 
@@ -104,6 +104,38 @@ clean 503 if unset, never a boot failure.
 - Property-preservation bias: generation failures (including NSFW
   moderation rejections) mark only that scene `"rejected"` with a visible
   reason — nothing is silently retried or hidden.
+
+## Phase 4: FFmpeg reel assembly
+
+- `POST /api/projects/[id]/reel` (multipart, optional `music` field) —
+  assembles every storyboard scene with a generated clip, in storyboard
+  order, into one final MP4. **Fully live-tested** — no external
+  credentials needed, just ffmpeg (confirmed present since Phase 0).
+- Pipeline (`src/lib/media/reel-assembler.ts`), all via `execFile` argument
+  arrays only, never shell string concatenation (spec's explicit FFmpeg
+  security requirement):
+  1. **Normalize** each clip to 1080×1920/30fps/H.264/yuv420p using
+     scale+pad (never a naive stretch — room proportions are preserved),
+     with a restrained fade-to-black at scene boundaries (no fade-in on the
+     first scene, no fade-out on the last).
+  2. **Concatenate** the normalized clips in storyboard order via the
+     concat demuxer.
+  3. **Mix in music** if supplied: trimmed to the reel's duration, faded
+     in/out, loudness-normalized (`loudnorm`). No music is shipped by
+     default — spec: never auto-ship copyrighted commercial tracks.
+  4. **Extract a thumbnail** and **validate the final file with ffprobe**
+     (codec, resolution) before returning success — an unvalidated file is
+     never handed back.
+- 7 integration tests run the real ffmpeg/ffprobe binaries against
+  generated lavfi test clips (`src/lib/media/reel-assembler.test.ts`) — no
+  mocking, since this module is almost entirely a thin wrapper around
+  ffmpeg subprocess calls. Also verified live end-to-end against a running
+  server: real synthetic clips (standing in for Higgsfield output, which
+  can't be produced without live credentials) were assembled into a real
+  reel, downloaded, and re-verified with `ffprobe` outside the app —
+  1080×1920, H.264, 30fps, AAC, exactly the target format.
+- `withinTargetDuration` (20-40s) is reported but not enforced — a short
+  storyboard still produces a valid, downloadable reel rather than an error.
 
 ## Architecture notes
 

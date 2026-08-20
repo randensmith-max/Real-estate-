@@ -16,6 +16,12 @@ export interface ProjectRecord {
   imageAnalyses?: ImageAnalysis[];
   /** Populated by POST /api/projects/[id]/storyboard, then user-editable via PATCH. */
   storyboard?: StoryboardScene[];
+  /** Populated by POST /api/projects/[id]/reel. */
+  reel?: {
+    videoUrl: string;
+    thumbnailUrl: string;
+    durationSeconds: number;
+  };
 }
 
 /**

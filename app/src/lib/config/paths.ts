@@ -15,5 +15,11 @@ export const UPLOADS_ROOT = path.join(projectRoot, "data", "uploads");
 /** Generated video clips — same reasoning as UPLOADS_ROOT, served via /api/videos/. */
 export const VIDEOS_ROOT = path.join(projectRoot, "data", "videos");
 
+/** Final assembled reels + thumbnails — served via /api/renders/. */
+export const RENDERS_ROOT = path.join(projectRoot, "data", "renders");
+
+/** Scratch working directory for intermediate ffmpeg files (normalized clips, concat lists) — never served. */
+export const RENDER_WORK_ROOT = path.join(projectRoot, "data", "render-work");
+
 /** Project metadata (JSON records) — also outside `public/`. */
 export const PROJECTS_DATA_ROOT = path.join(projectRoot, "data", "projects");

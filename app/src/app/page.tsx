@@ -29,6 +29,9 @@ type StoryboardResponse = {
   storyboard: StoryboardScene[];
 };
 
+type ReelInfo = { videoUrl: string; thumbnailUrl: string; durationSeconds: number };
+type ReelResponse = { projectId: string; reel: ReelInfo; withinTargetDuration: boolean; sceneCount: number };
+
 export default function Home() {
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
@@ -38,6 +41,8 @@ export default function Home() {
   const [analyses, setAnalyses] = useState<ImageAnalysis[] | null>(null);
   const [storyboard, setStoryboard] = useState<StoryboardScene[] | null>(null);
   const [generationProgress, setGenerationProgress] = useState<{ current: number; total: number } | null>(null);
+  const [reel, setReel] = useState<ReelInfo | null>(null);
+  const [musicFile, setMusicFile] = useState<File | null>(null);
 
   async function handleImport(event: FormEvent) {
     event.preventDefault();
@@ -227,6 +232,33 @@ export default function Home() {
     saveStoryboard(updated);
   }
 
+  async function handleBuildReel() {
+    if (!project) return;
+    setBusy(true);
+    setErrorMessage(null);
+
+    try {
+      const formData = new FormData();
+      if (musicFile) formData.set("music", musicFile);
+
+      const res = await fetch(`/api/projects/${project.projectId}/reel`, { method: "POST", body: formData });
+      const data = (await res.json()) as ReelResponse | ImportErrorResponse;
+
+      if (!res.ok || "error" in data) {
+        setErrorMessage((data as ImportErrorResponse).message);
+        return;
+      }
+
+      setReel(data.reel);
+    } catch {
+      setErrorMessage("Something went wrong assembling the reel.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const hasGeneratedScenes = Boolean(storyboard?.some((s) => s.generatedVideoUrl));
+
   return (
     <main style={{ maxWidth: 720, margin: "0 auto", padding: "48px 24px", fontFamily: "system-ui, sans-serif" }}>
       <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8 }}>Cinematic Property Reel Generator</h1>
@@ -345,6 +377,46 @@ export default function Home() {
           generationProgress={generationProgress}
           busy={busy}
         />
+      )}
+
+      {hasGeneratedScenes && (
+        <section style={{ marginTop: 24 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Build Reel</h2>
+          <p style={{ color: "#666", marginBottom: 12 }}>
+            Assembles every generated clip, in storyboard order, into one 1080×1920 MP4.
+          </p>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+            <input
+              type="file"
+              accept="audio/mpeg,audio/mp3,audio/wav,audio/aac"
+              onChange={(e) => setMusicFile(e.target.files?.[0] ?? null)}
+            />
+            <button type="button" onClick={handleBuildReel} disabled={busy} style={primaryBtn}>
+              Build Reel
+            </button>
+          </div>
+
+          {reel && (
+            <div>
+              <video
+                src={reel.videoUrl}
+                poster={reel.thumbnailUrl}
+                controls
+                style={{ width: "100%", maxWidth: 320, borderRadius: 12, background: "#000" }}
+              />
+              <p style={{ color: "#666", fontSize: 14, marginTop: 8 }}>
+                {reel.durationSeconds.toFixed(1)}s &middot;{" "}
+                <a href={reel.videoUrl} download>
+                  Download MP4
+                </a>{" "}
+                &middot;{" "}
+                <a href={reel.thumbnailUrl} download>
+                  Download thumbnail
+                </a>
+              </p>
+            </div>
+          )}
+        </section>
       )}
     </main>
   );
