@@ -1,9 +1,10 @@
-# Cinematic Property Reel Generator — Phase 1 + Phase 2
+# Cinematic Property Reel Generator — Phases 1-3
 
 Paste a property listing URL (or upload photos directly), analyze the
-photos with Claude Vision, and edit the resulting cinematic storyboard
-before any Higgsfield credits are spent. Higgsfield video generation and
-final reel assembly are later phases.
+photos with Claude Vision, edit the resulting cinematic storyboard, then
+generate real Higgsfield video clips per approved scene — reviewing,
+approving, rejecting, or regenerating each one individually. Final reel
+assembly (FFmpeg) and branding (HyperFrames) are later phases.
 
 ## Supported listing platforms
 
@@ -44,10 +45,11 @@ npm run build          # next build (also runs TypeScript)
 ## Environment variables
 
 See `.env.example`. None are required to boot the app or use URL import /
-photo upload — only `ANTHROPIC_API_KEY` is required, and only at the moment
-`POST /api/projects/[id]/analyze` is called (a missing key returns a clean
-503, not a boot failure). `HF_CREDENTIALS`/`HF_API_KEY`+`HF_API_SECRET` are
-listed for Phase 3 but unused until then.
+photo upload. `ANTHROPIC_API_KEY` is required only when
+`POST /api/projects/[id]/analyze` is called; `HF_CREDENTIALS` (or
+`HF_API_KEY`+`HF_API_SECRET`) is required only when
+`POST /api/projects/[id]/scenes/[sceneId]/generate` is called. Both return a
+clean 503 if unset, never a boot failure.
 
 ## Phase 2: photo analysis and storyboard
 
@@ -72,6 +74,36 @@ listed for Phase 3 but unused until then.
 - Higgsfield prompts (`src/lib/storyboard/prompt-generator.ts`) always start
   from a fixed property-preservation instruction, with the scene's camera
   motion appended — never freeform per-scene text.
+
+## Phase 3: Higgsfield cinematic video generation
+
+- `POST /api/projects/[id]/scenes/[sceneId]/generate` — generates (or
+  regenerates) exactly one scene: uploads the source image via the official
+  v1 `@higgsfield/client` `uploadImage()`, then calls the v2 client's
+  `subscribe('/v1/image2video/dop', { withPolling: true })`. Requires
+  `HF_CREDENTIALS`. **Not live-tested with real credentials** — none are
+  available in this environment — but (a) provider logic (upload → subscribe
+  → status mapping → error wrapping) is unit-tested against a mocked SDK
+  client, (b) the clean 503-when-unconfigured and 404-when-unknown-scene
+  paths were verified live, and (c) a placeholder-credential probe against
+  the *real* Higgsfield endpoint (same technique as the Phase 0 report)
+  confirmed the integration reaches the real API and correctly parses a
+  real structured error response (`NotEnoughCreditsError`) rather than a
+  network failure — and produced the identical result Phase 0 found,
+  corroborating that this isn't a fluke.
+- The client generates one scene per HTTP request, sequentially, showing
+  "Generating scene X of Y" — this isn't a simplification but a direct
+  consequence of the real SDK's public interface, which has no separate
+  "check status of an existing job" method; see
+  `docs/adr/0003-higgsfield-polling-model.md` for the full explanation
+  (including a real discrepancy found between the SDK's README examples and
+  its actual shipped `.d.ts` types — the types were followed).
+- Per-scene review: each generated clip gets a preview player plus
+  Approve/Reject/Regenerate controls. Rejecting or regenerating never
+  touches any other scene.
+- Property-preservation bias: generation failures (including NSFW
+  moderation rejections) mark only that scene `"rejected"` with a visible
+  reason — nothing is silently retried or hidden.
 
 ## Architecture notes
 

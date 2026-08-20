@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
+    "@higgsfield/client": "^0.2.1",
     "next": "16.3.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",

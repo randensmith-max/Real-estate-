@@ -8,16 +8,38 @@ interface Props {
   onChange: (scenes: StoryboardScene[]) => void;
   onSave: () => void;
   onApproveAll: () => void;
+  onGenerateApproved: () => void;
+  onRegenerateScene: (sceneId: string) => void;
+  onSetSceneStatus: (sceneId: string, status: "approved" | "rejected") => void;
+  generationProgress: { current: number; total: number } | null;
   busy: boolean;
 }
 
+const STATUS_COLORS: Record<StoryboardScene["status"], { bg: string; fg: string }> = {
+  planned: { bg: "#f0f0f0", fg: "#555" },
+  generating: { bg: "#fff8e1", fg: "#a67c00" },
+  generated: { bg: "#e8f0fe", fg: "#1a56db" },
+  approved: { bg: "#e6f6ea", fg: "#1a7a34" },
+  rejected: { bg: "#fdeceb", fg: "#b3261e" },
+};
+
 /**
- * Storyboard editor (Phase 2 requirement): reorder, remove, edit camera
- * motion / prompt / duration, before any Higgsfield credits are spent.
- * Kept as a plain controlled list with up/down buttons rather than a
- * drag-and-drop library — lean scope, no extra dependency for Phase 2.
+ * Storyboard editor (Phase 2: reorder/remove/edit before spending credits;
+ * Phase 3: trigger per-scene generation, review clips, approve/reject/
+ * regenerate individually — never forcing the whole reel to regenerate
+ * because one scene is bad).
  */
-export function StoryboardEditor({ scenes, onChange, onSave, onApproveAll, busy }: Props) {
+export function StoryboardEditor({
+  scenes,
+  onChange,
+  onSave,
+  onApproveAll,
+  onGenerateApproved,
+  onRegenerateScene,
+  onSetSceneStatus,
+  generationProgress,
+  busy,
+}: Props) {
   function updateScene(id: string, patch: Partial<StoryboardScene>) {
     onChange(scenes.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   }
@@ -41,6 +63,9 @@ export function StoryboardEditor({ scenes, onChange, onSave, onApproveAll, busy 
     onChange(reordered.map((s, i) => ({ ...s, order: i })));
   }
 
+  const hasApprovable = scenes.some((s) => s.status === "planned");
+  const hasGeneratable = scenes.some((s) => s.status === "approved" || s.status === "rejected");
+
   return (
     <section style={{ marginTop: 24 }}>
       <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Storyboard</h2>
@@ -49,94 +74,136 @@ export function StoryboardEditor({ scenes, onChange, onSave, onApproveAll, busy 
       </p>
 
       <div style={{ display: "grid", gap: 12 }}>
-        {scenes.map((scene, index) => (
-          <div
-            key={scene.id}
-            style={{ display: "flex", gap: 12, padding: 12, border: "1px solid #ddd", borderRadius: 10, alignItems: "flex-start" }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element -- local static preview */}
-            <img
-              src={scene.imageId}
-              alt={scene.roomType}
-              style={{ width: 96, height: 96, objectFit: "cover", borderRadius: 8, flexShrink: 0 }}
-            />
-
-            <div style={{ flex: 1, display: "grid", gap: 6 }}>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <strong style={{ textTransform: "capitalize" }}>{scene.roomType.replace("_", " ")}</strong>
-                <span style={{ fontSize: 12, color: "#888" }}>Scene {index + 1}</span>
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 600,
-                    padding: "2px 8px",
-                    borderRadius: 999,
-                    background: scene.status === "approved" ? "#e6f6ea" : "#f0f0f0",
-                    color: scene.status === "approved" ? "#1a7a34" : "#555",
-                  }}
-                >
-                  {scene.status}
-                </span>
-              </div>
-
-              <div style={{ display: "flex", gap: 8 }}>
-                <select
-                  value={scene.cameraMotion}
-                  onChange={(e) => updateScene(scene.id, { cameraMotion: e.target.value })}
-                  style={{ padding: 6, borderRadius: 6, border: "1px solid #ccc" }}
-                >
-                  {CAMERA_MOTIONS.map((m) => (
-                    <option key={m} value={m}>
-                      {m.replace("_", " ")}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="number"
-                  min={1}
-                  max={10}
-                  value={scene.durationSeconds}
-                  onChange={(e) => updateScene(scene.id, { durationSeconds: Number(e.target.value) })}
-                  style={{ width: 70, padding: 6, borderRadius: 6, border: "1px solid #ccc" }}
+        {scenes.map((scene, index) => {
+          const colors = STATUS_COLORS[scene.status];
+          return (
+            <div
+              key={scene.id}
+              style={{ display: "flex", gap: 12, padding: 12, border: "1px solid #ddd", borderRadius: 10, alignItems: "flex-start" }}
+            >
+              {scene.generatedVideoUrl ? (
+                <video
+                  src={scene.generatedVideoUrl}
+                  controls
+                  muted
+                  style={{ width: 128, height: 96, objectFit: "cover", borderRadius: 8, flexShrink: 0, background: "#000" }}
                 />
-                <span style={{ alignSelf: "center", fontSize: 13, color: "#888" }}>seconds</span>
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element -- local static preview
+                <img
+                  src={scene.imageId}
+                  alt={scene.roomType}
+                  style={{ width: 96, height: 96, objectFit: "cover", borderRadius: 8, flexShrink: 0 }}
+                />
+              )}
+
+              <div style={{ flex: 1, display: "grid", gap: 6 }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <strong style={{ textTransform: "capitalize" }}>{scene.roomType.replace("_", " ")}</strong>
+                  <span style={{ fontSize: 12, color: "#888" }}>Scene {index + 1}</span>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: "2px 8px",
+                      borderRadius: 999,
+                      background: colors.bg,
+                      color: colors.fg,
+                    }}
+                  >
+                    {scene.status}
+                  </span>
+                </div>
+
+                {scene.generationError && (
+                  <p style={{ fontSize: 12, color: "#b3261e", margin: 0 }}>{scene.generationError}</p>
+                )}
+
+                <div style={{ display: "flex", gap: 8 }}>
+                  <select
+                    value={scene.cameraMotion}
+                    onChange={(e) => updateScene(scene.id, { cameraMotion: e.target.value })}
+                    style={{ padding: 6, borderRadius: 6, border: "1px solid #ccc" }}
+                  >
+                    {CAMERA_MOTIONS.map((m) => (
+                      <option key={m} value={m}>
+                        {m.replace("_", " ")}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={scene.durationSeconds}
+                    onChange={(e) => updateScene(scene.id, { durationSeconds: Number(e.target.value) })}
+                    style={{ width: 70, padding: 6, borderRadius: 6, border: "1px solid #ccc" }}
+                  />
+                  <span style={{ alignSelf: "center", fontSize: 13, color: "#888" }}>seconds</span>
+                </div>
+
+                <textarea
+                  value={scene.higgsfieldPrompt}
+                  onChange={(e) => updateScene(scene.id, { higgsfieldPrompt: e.target.value })}
+                  rows={2}
+                  style={{ padding: 8, borderRadius: 6, border: "1px solid #ccc", fontSize: 12, fontFamily: "monospace" }}
+                />
+
+                {scene.generatedVideoUrl && (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button type="button" onClick={() => onSetSceneStatus(scene.id, "approved")} disabled={busy} style={smallLabelBtn}>
+                      Approve clip
+                    </button>
+                    <button type="button" onClick={() => onSetSceneStatus(scene.id, "rejected")} disabled={busy} style={smallLabelBtn}>
+                      Reject
+                    </button>
+                    <button type="button" onClick={() => onRegenerateScene(scene.id)} disabled={busy} style={smallLabelBtn}>
+                      Regenerate
+                    </button>
+                  </div>
+                )}
               </div>
 
-              <textarea
-                value={scene.higgsfieldPrompt}
-                onChange={(e) => updateScene(scene.id, { higgsfieldPrompt: e.target.value })}
-                rows={2}
-                style={{ padding: 8, borderRadius: 6, border: "1px solid #ccc", fontSize: 12, fontFamily: "monospace" }}
-              />
+              <div style={{ display: "grid", gap: 4 }}>
+                <button type="button" onClick={() => moveScene(scene.id, -1)} disabled={index === 0} style={smallBtn}>
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveScene(scene.id, 1)}
+                  disabled={index === scenes.length - 1}
+                  style={smallBtn}
+                >
+                  ↓
+                </button>
+                <button type="button" onClick={() => removeScene(scene.id)} style={{ ...smallBtn, color: "#b3261e" }}>
+                  ✕
+                </button>
+              </div>
             </div>
-
-            <div style={{ display: "grid", gap: 4 }}>
-              <button type="button" onClick={() => moveScene(scene.id, -1)} disabled={index === 0} style={smallBtn}>
-                ↑
-              </button>
-              <button
-                type="button"
-                onClick={() => moveScene(scene.id, 1)}
-                disabled={index === scenes.length - 1}
-                style={smallBtn}
-              >
-                ↓
-              </button>
-              <button type="button" onClick={() => removeScene(scene.id)} style={{ ...smallBtn, color: "#b3261e" }}>
-                ✕
-              </button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+      <div style={{ display: "flex", gap: 8, marginTop: 16, alignItems: "center" }}>
         <button type="button" onClick={onSave} disabled={busy} style={secondaryBtn}>
           Save Changes
         </button>
-        <button type="button" onClick={onApproveAll} disabled={busy} style={primaryBtn}>
-          Approve Storyboard
-        </button>
+        {hasApprovable && (
+          <button type="button" onClick={onApproveAll} disabled={busy} style={primaryBtn}>
+            Approve Storyboard
+          </button>
+        )}
+        {hasGeneratable && (
+          <button type="button" onClick={onGenerateApproved} disabled={busy} style={primaryBtn}>
+            Generate Cinematic Clips
+          </button>
+        )}
+        {generationProgress && (
+          <span style={{ fontSize: 14, color: "#666" }}>
+            Generating scene {generationProgress.current} of {generationProgress.total}…
+          </span>
+        )}
       </div>
     </section>
   );
@@ -145,6 +212,15 @@ export function StoryboardEditor({ scenes, onChange, onSave, onApproveAll, busy 
 const smallBtn: React.CSSProperties = {
   width: 32,
   height: 28,
+  border: "1px solid #ccc",
+  borderRadius: 6,
+  background: "#fff",
+  cursor: "pointer",
+};
+
+const smallLabelBtn: React.CSSProperties = {
+  padding: "4px 10px",
+  fontSize: 12,
   border: "1px solid #ccc",
   borderRadius: 6,
   background: "#fff",

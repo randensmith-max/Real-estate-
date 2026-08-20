@@ -37,6 +37,7 @@ export default function Home() {
   const [project, setProject] = useState<ImportSuccessResponse | null>(null);
   const [analyses, setAnalyses] = useState<ImageAnalysis[] | null>(null);
   const [storyboard, setStoryboard] = useState<StoryboardScene[] | null>(null);
+  const [generationProgress, setGenerationProgress] = useState<{ current: number; total: number } | null>(null);
 
   async function handleImport(event: FormEvent) {
     event.preventDefault();
@@ -167,6 +168,65 @@ export default function Home() {
     }
   }
 
+  async function generateScene(sceneId: string): Promise<StoryboardScene | null> {
+    if (!project) return null;
+    try {
+      const res = await fetch(`/api/projects/${project.projectId}/scenes/${sceneId}/generate`, { method: "POST" });
+      const data = (await res.json()) as { scene?: StoryboardScene; message?: string; error?: string };
+
+      if (!res.ok && !data.scene) {
+        setErrorMessage(data.message ?? "Scene generation failed.");
+        return null;
+      }
+      if (data.message && data.error !== "GENERATION_FAILED") {
+        // A soft warning (e.g. rejected/nsfw) still returns 200 with a scene — surface it without blocking the rest.
+        setErrorMessage(data.message);
+      }
+      return data.scene ?? null;
+    } catch {
+      setErrorMessage("Something went wrong generating this scene.");
+      return null;
+    }
+  }
+
+  async function handleGenerateApproved() {
+    if (!storyboard) return;
+    const toGenerate = storyboard.filter((s) => s.status === "approved" || s.status === "rejected");
+    if (toGenerate.length === 0) return;
+
+    setBusy(true);
+    setErrorMessage(null);
+
+    for (let i = 0; i < toGenerate.length; i++) {
+      setGenerationProgress({ current: i + 1, total: toGenerate.length });
+      const sceneId = toGenerate[i]!.id;
+      const updatedScene = await generateScene(sceneId);
+      if (updatedScene) {
+        setStoryboard((prev) => (prev ? prev.map((s) => (s.id === sceneId ? updatedScene : s)) : prev));
+      }
+    }
+
+    setGenerationProgress(null);
+    setBusy(false);
+  }
+
+  async function handleRegenerateScene(sceneId: string) {
+    setBusy(true);
+    setErrorMessage(null);
+    const updatedScene = await generateScene(sceneId);
+    if (updatedScene) {
+      setStoryboard((prev) => (prev ? prev.map((s) => (s.id === sceneId ? updatedScene : s)) : prev));
+    }
+    setBusy(false);
+  }
+
+  function handleSetSceneStatus(sceneId: string, status: "approved" | "rejected") {
+    if (!storyboard) return;
+    const updated = storyboard.map((s) => (s.id === sceneId ? { ...s, status } : s));
+    setStoryboard(updated);
+    saveStoryboard(updated);
+  }
+
   return (
     <main style={{ maxWidth: 720, margin: "0 auto", padding: "48px 24px", fontFamily: "system-ui, sans-serif" }}>
       <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8 }}>Cinematic Property Reel Generator</h1>
@@ -279,6 +339,10 @@ export default function Home() {
           onChange={setStoryboard}
           onSave={() => saveStoryboard(storyboard)}
           onApproveAll={() => saveStoryboard(storyboard.map((s) => ({ ...s, status: "approved" })))}
+          onGenerateApproved={handleGenerateApproved}
+          onRegenerateScene={handleRegenerateScene}
+          onSetSceneStatus={handleSetSceneStatus}
+          generationProgress={generationProgress}
           busy={busy}
         />
       )}
