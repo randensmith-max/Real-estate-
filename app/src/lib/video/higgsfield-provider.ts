@@ -14,6 +14,13 @@ import {
   type ProviderJobStatus,
   type GeneratedVideo,
 } from "./provider";
+import {
+  logStep,
+  logUpstreamFailure,
+  describeCredentialShape,
+  describeUrlForLogging,
+  isAxiosLikeError,
+} from "./upstream-logger";
 
 /**
  * Official Higgsfield SDK implementation of `VideoGenerationProvider`.
@@ -43,6 +50,7 @@ export class HiggsfieldProvider implements VideoGenerationProvider {
     credentials: string,
     private readonly model: "dop-lite" | "dop-turbo" | "dop-standard" = "dop-turbo"
   ) {
+    logStep("credentials-check", describeCredentialShape(credentials));
     if (!credentials) {
       throw new VideoGenerationError("HF_CREDENTIALS is required to use HiggsfieldProvider.", false);
     }
@@ -58,13 +66,30 @@ export class HiggsfieldProvider implements VideoGenerationProvider {
   }
 
   async generateScene(input: GenerateSceneInput): Promise<ProviderJob> {
+    const expectedContentType = `image/${input.sourceImageFormat}`;
+    logStep("image-upload:start", {
+      bufferBytes: input.sourceImageBuffer.length,
+      sourceImageFormat: input.sourceImageFormat,
+      expectedContentType,
+    });
+
     let imageUrl: string;
     try {
+      // The SDK's uploadImage() does two upstream calls internally: (1) POST
+      // to Higgsfield's own API for a presigned upload URL — properly
+      // classified/thrown as AuthenticationError/NotEnoughCreditsError/
+      // APIError by the SDK's own interceptor — then (2) a raw PUT straight
+      // to that presigned URL (S3 or similar) that bypasses the SDK's error
+      // handling entirely and throws a plain axios error instead. Both are
+      // caught here; `wrapHiggsfieldError` distinguishes which one failed
+      // from the error's shape and logs full upstream detail either way.
       imageUrl = await this.v1Client.uploadImage(input.sourceImageBuffer, input.sourceImageFormat);
+      logStep("image-upload:success", { imageUrl: describeUrlForLogging(imageUrl) });
     } catch (error) {
       throw wrapHiggsfieldError(error, "uploading source image");
     }
 
+    logStep("video-generation:start", { model: this.model, promptLength: input.prompt.length });
     let response: V2Response;
     try {
       response = await this.v2Client.subscribe("/v1/image2video/dop", {
@@ -75,6 +100,7 @@ export class HiggsfieldProvider implements VideoGenerationProvider {
         },
         withPolling: true,
       });
+      logStep("video-generation:success", { requestId: response.request_id, status: response.status });
     } catch (error) {
       throw wrapHiggsfieldError(error, "generating video");
     }
@@ -114,42 +140,58 @@ export class HiggsfieldProvider implements VideoGenerationProvider {
       );
     }
 
-    const response = await fetch(cached.video.url);
-    if (!response.ok) {
+    logStep("video-download:start", { url: describeUrlForLogging(cached.video.url) });
+    let response: Response;
+    try {
+      response = await fetch(cached.video.url);
+    } catch (error) {
+      logUpstreamFailure("video-download", error);
       throw new VideoGenerationError(
-        `Failed to download generated video (HTTP ${response.status}).`,
+        `Network error while downloading generated video: ${(error as Error).message}`,
+        true,
+        error
+      );
+    }
+    if (!response.ok) {
+      const bodyText = await response.text().catch(() => "<unreadable response body>");
+      console.error(
+        "[higgsfield] UPSTREAM FAILURE",
+        JSON.stringify(
+          {
+            step: "video-download",
+            errorKind: "http",
+            httpStatus: response.status,
+            httpStatusText: response.statusText,
+            requestUrl: describeUrlForLogging(cached.video.url),
+            responseBody: bodyText.slice(0, 2000),
+          },
+          null,
+          2
+        )
+      );
+      throw new VideoGenerationError(
+        `Failed to download generated video (HTTP ${response.status} ${response.statusText}).`,
         true
       );
     }
+    logStep("video-download:success", { contentLength: response.headers.get("content-length") });
     const contentType = response.headers.get("content-type") ?? "video/mp4";
     const buffer = Buffer.from(await response.arrayBuffer());
     return { buffer, contentType };
   }
 }
 
-/** Narrow shape of an axios error, without depending on axios's types here. */
-interface AxiosLikeError {
-  response?: { status?: number; data?: unknown };
-  config?: { url?: string };
-  message: string;
-}
-
-function isAxiosLikeError(error: unknown): error is AxiosLikeError {
-  return typeof error === "object" && error !== null && "response" in error && "message" in error;
-}
-
-/** Strips query-string params (presigned-URL signatures/tokens) before surfacing a URL in an error message. */
-function urlHostAndPath(url: string | undefined): string | undefined {
-  if (!url) return undefined;
-  try {
-    const parsed = new URL(url);
-    return `${parsed.hostname}${parsed.pathname}`;
-  } catch {
-    return undefined;
-  }
-}
-
+/**
+ * Every upstream failure funnels through here regardless of shape (SDK's
+ * own classified errors, a raw axios error from the S3-bypassing upload
+ * PUT, or anything else) — so this is also the single place that logs full
+ * server-side diagnostic detail via `logUpstreamFailure`, satisfying "log
+ * every upstream request's failure" without duplicating that call at every
+ * try/catch site.
+ */
 function wrapHiggsfieldError(error: unknown, action: string): VideoGenerationError {
+  logUpstreamFailure(action, error);
+
   if (error instanceof AuthenticationError) {
     return new VideoGenerationError(`Higgsfield authentication failed while ${action}.`, false, error);
   }
@@ -167,7 +209,8 @@ function wrapHiggsfieldError(error: unknown, action: string): VideoGenerationErr
   }
   if (isAxiosLikeError(error)) {
     const status = error.response?.status;
-    const host = urlHostAndPath(error.config?.url);
+    const hostInfo = describeUrlForLogging(error.config?.url);
+    const host = hostInfo && "host" in hostInfo ? `${hostInfo.host}${hostInfo.path}` : undefined;
     const bodyText =
       typeof error.response?.data === "string"
         ? error.response.data.slice(0, 500)

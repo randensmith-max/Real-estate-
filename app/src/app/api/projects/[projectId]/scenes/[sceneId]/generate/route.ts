@@ -6,6 +6,7 @@ import { HiggsfieldProvider } from "@/lib/video/higgsfield-provider";
 import { VideoGenerationError } from "@/lib/video/provider";
 import { saveVideoToProject } from "@/lib/media/video-store";
 import type { StoryboardScene } from "@/lib/storyboard/types";
+import { logStep, describeCredentialShape } from "@/lib/video/upstream-logger";
 
 const projectStore = new ProjectStore(PROJECTS_DATA_ROOT);
 
@@ -27,6 +28,8 @@ export async function POST(
   { params }: { params: Promise<{ projectId: string; sceneId: string }> }
 ): Promise<Response> {
   const { projectId, sceneId } = await params;
+  logStep("generate:request-received", { projectId, sceneId });
+
   const project = await projectStore.get(projectId);
   if (!project) {
     return Response.json({ error: "PROJECT_NOT_FOUND", message: "No such project." }, { status: 404 });
@@ -39,7 +42,11 @@ export async function POST(
   }
   const scene = storyboard[sceneIndex]!;
 
+  // Read fresh from process.env on every request (never cached at module
+  // load) — logging its shape here proves that directly, ruling out a
+  // "stale env var" as a cause distinct from "wrong env var value".
   const credentials = process.env.HF_CREDENTIALS;
+  logStep("generate:credentials-from-env", describeCredentialShape(credentials));
   if (!credentials) {
     return Response.json(
       {
@@ -88,6 +95,12 @@ export async function POST(
     return Response.json({ projectId, scene: updated, message: reason }, { status: 200 });
   } catch (error) {
     const message = error instanceof VideoGenerationError ? error.message : "Generation failed unexpectedly.";
+    // Full upstream detail (status, body, which step, stack) was already
+    // logged server-side at the point it was caught, inside
+    // `wrapHiggsfieldError` (see src/lib/video/upstream-logger.ts) — this
+    // line just marks that the request-level outcome, so "search the
+    // terminal for [higgsfield]" finds the whole story in one place.
+    console.error("[higgsfield] generate:request-failed", { projectId, sceneId, message });
     const updated = await setSceneStatus(project.id, storyboard, sceneIndex, {
       status: "rejected",
       generationError: message,
