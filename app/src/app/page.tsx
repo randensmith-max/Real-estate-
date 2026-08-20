@@ -5,6 +5,7 @@ import type { ImportedListing } from "@/lib/listing/types";
 import type { ImageAnalysis } from "@/lib/vision/schema";
 import type { StoryboardScene } from "@/lib/storyboard/types";
 import { StoryboardEditor } from "./components/StoryboardEditor";
+import { BrandProfileSettings } from "./components/BrandProfileSettings";
 
 type ImportErrorResponse = {
   error: string;
@@ -43,6 +44,8 @@ export default function Home() {
   const [generationProgress, setGenerationProgress] = useState<{ current: number; total: number } | null>(null);
   const [reel, setReel] = useState<ReelInfo | null>(null);
   const [musicFile, setMusicFile] = useState<File | null>(null);
+  const [brandedVideoUrl, setBrandedVideoUrl] = useState<string | null>(null);
+  const [featureCallout, setFeatureCallout] = useState("");
 
   async function handleImport(event: FormEvent) {
     event.preventDefault();
@@ -259,6 +262,38 @@ export default function Home() {
 
   const hasGeneratedScenes = Boolean(storyboard?.some((s) => s.generatedVideoUrl));
 
+  async function handleAddBranding() {
+    if (!project) return;
+    setBusy(true);
+    setErrorMessage(null);
+
+    try {
+      const res = await fetch(`/api/projects/${project.projectId}/branded-reel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          address: project.listing.address,
+          price: project.listing.price ? String(project.listing.price) : undefined,
+          bedrooms: project.listing.bedrooms,
+          bathrooms: project.listing.bathrooms,
+          featureCallout: featureCallout || undefined,
+        }),
+      });
+      const data = (await res.json()) as { brandedVideoUrl?: string } | ImportErrorResponse;
+
+      if (!res.ok || "error" in data) {
+        setErrorMessage((data as ImportErrorResponse).message);
+        return;
+      }
+
+      setBrandedVideoUrl(data.brandedVideoUrl ?? null);
+    } catch {
+      setErrorMessage("Something went wrong applying branding.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <main style={{ maxWidth: 720, margin: "0 auto", padding: "48px 24px", fontFamily: "system-ui, sans-serif" }}>
       <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8 }}>Cinematic Property Reel Generator</h1>
@@ -414,10 +449,37 @@ export default function Home() {
                   Download thumbnail
                 </a>
               </p>
+
+              <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #eee" }}>
+                <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Add Premium Branding</h3>
+                <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                  <input
+                    placeholder="Feature callout (optional, e.g. Open-Concept Living)"
+                    value={featureCallout}
+                    onChange={(e) => setFeatureCallout(e.target.value)}
+                    style={inputStyle}
+                  />
+                  <button type="button" onClick={handleAddBranding} disabled={busy} style={secondaryBtn}>
+                    Add Branding
+                  </button>
+                </div>
+                {brandedVideoUrl && (
+                  <div>
+                    <video src={brandedVideoUrl} controls style={{ width: "100%", maxWidth: 320, borderRadius: 12, background: "#000" }} />
+                    <p style={{ marginTop: 8 }}>
+                      <a href={brandedVideoUrl} download>
+                        Download branded MP4
+                      </a>
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </section>
       )}
+
+      <BrandProfileSettings />
     </main>
   );
 }

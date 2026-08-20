@@ -1,10 +1,12 @@
-# Cinematic Property Reel Generator — Phases 1-4
+# Cinematic Property Reel Generator — Phases 1-5
 
 Paste a property listing URL (or upload photos directly), analyze the
 photos with Claude Vision, edit the resulting cinematic storyboard, generate
-real Higgsfield video clips per approved scene, then assemble every
-generated clip into one downloadable 1080×1920 MP4 reel. Branding
-(HyperFrames) is the last remaining phase.
+real Higgsfield video clips per approved scene, assemble every generated
+clip into one downloadable 1080×1920 MP4 reel, then optionally overlay
+premium branding (address, price, bed/bath, a feature callout, and a
+closing card with your logo/agent info/CTA) via HyperFrames. All five
+planned phases are implemented.
 
 ## Supported listing platforms
 
@@ -136,6 +138,41 @@ clean 503 if unset, never a boot failure.
   1080×1920, H.264, 30fps, AAC, exactly the target format.
 - `withinTargetDuration` (20-40s) is reported but not enforced — a short
   storyboard still produces a valid, downloadable reel rather than an error.
+
+## Phase 5: HyperFrames branding
+
+- `GET`/`PUT /api/brand-profile` — a single global `BrandProfile` (company
+  name, agent name/phone/website, primary/secondary color, CTA text, logo)
+  per the spec's exact field list. Deliberately not per-project or
+  multi-tenant — spec: "don't overbuild white-label SaaS functionality."
+- `POST /api/projects/[id]/branded-reel` — overlays the brand profile plus
+  caller-supplied property facts (address/cityState/price/bedrooms/
+  bathrooms/one optional feature callout) onto the already-assembled plain
+  reel, via `src/lib/media/hyperframes-renderer.ts`. Per ADR 0004, this
+  shells out to `npx hyperframes render` (the CLI path Phase 0 proved
+  works) rather than an unverified programmatic SDK.
+- `src/lib/media/hyperframes-composition.ts` is a pure function generating
+  the HyperFrames HTML composition — no filesystem/process access, so its
+  overlay-timing logic (opening title, price/bed-bath card, optional
+  feature callout, closing brand card — each scaled to the reel's actual
+  duration, never overlapping, the feature callout omitted entirely on a
+  reel too short to fit it) is directly unit-tested (10 tests) independent
+  of the CLI render step.
+- **Fully live-tested end to end**, not just unit-tested: built a real
+  12-second reel from synthetic clips, ran it through the actual
+  HyperFrames CLI with a real brand profile and property data, downloaded
+  the result, and re-verified with `ffprobe` outside the app — H.264,
+  1080×1920, 30fps, AAC, 13s. Extracted frames at the opening, middle, and
+  closing timestamps and visually confirmed each overlay actually renders
+  correctly: address + city/state + price/bed/bath card at the open, the
+  feature callout lower-third mid-reel, and the full brand card (company
+  name, agent name, phone, website, CTA button) in the requested colors at
+  the close.
+- Style intentionally restrained per spec (premium/modern/cinematic, large
+  clean typography, minimal copy, subtle scrim gradient, no particle
+  effects/excessive gold/generic template look) — the property footage
+  fills the frame throughout; overlays are lower-thirds/title cards, never
+  full-screen graphics that hide the video.
 
 ## Architecture notes
 

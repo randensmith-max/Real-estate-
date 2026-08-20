@@ -23,3 +23,9 @@ export const RENDER_WORK_ROOT = path.join(projectRoot, "data", "render-work");
 
 /** Project metadata (JSON records) — also outside `public/`. */
 export const PROJECTS_DATA_ROOT = path.join(projectRoot, "data", "projects");
+
+/** Single global brand profile record. */
+export const BRAND_DATA_ROOT = path.join(projectRoot, "data", "brand");
+
+/** Pseudo-project id under UPLOADS_ROOT for the brand logo, reusing the existing image-store pipeline. */
+export const BRAND_LOGO_PROJECT_ID = "brand";
