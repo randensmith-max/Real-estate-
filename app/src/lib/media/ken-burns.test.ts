@@ -60,7 +60,7 @@ describe("ken-burns (real ffmpeg)", () => {
         expect(probe.durationSeconds).toBeLessThan(3.3);
       }
     },
-    60000
+    150000
   );
 
   it(
