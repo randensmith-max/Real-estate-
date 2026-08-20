@@ -2,6 +2,7 @@ import { z } from "zod";
 import { BrandProfileStore } from "@/lib/brand/brand-profile-store";
 import { BRAND_DATA_ROOT, UPLOADS_ROOT, BRAND_LOGO_PROJECT_ID } from "@/lib/config/paths";
 import { saveImageToProject, validateUploadedImageMimeType, UnsupportedImageError } from "@/lib/media/image-store";
+import type { BrandProfile } from "@/lib/brand/types";
 
 const store = new BrandProfileStore(BRAND_DATA_ROOT);
 
@@ -10,15 +11,20 @@ export async function GET(): Promise<Response> {
   return Response.json({ profile }, { status: 200 });
 }
 
+// logoPath is intentionally NOT part of this schema — it is never accepted from the
+// client, only ever set below from a real saved upload or the existing stored value.
+// primaryColor/secondaryColor are interpolated directly into a <style> block in the
+// generated HyperFrames composition (hyperframes-composition.ts) — a strict hex-color
+// format here is what keeps that safe, not the escaping used for the text fields below.
+const HEX_COLOR = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 const BrandProfileSchema = z.object({
-  companyName: z.string().optional(),
-  logoPath: z.string().optional(),
-  agentName: z.string().optional(),
-  phone: z.string().optional(),
-  website: z.string().optional(),
-  primaryColor: z.string().optional(),
-  secondaryColor: z.string().optional(),
-  cta: z.string().optional(),
+  companyName: z.string().max(200).optional(),
+  agentName: z.string().max(200).optional(),
+  phone: z.string().max(50).optional(),
+  website: z.string().max(200).optional(),
+  primaryColor: z.string().regex(HEX_COLOR, "Must be a hex color like #112233").optional(),
+  secondaryColor: z.string().regex(HEX_COLOR, "Must be a hex color like #112233").optional(),
+  cta: z.string().max(60).optional(),
 });
 
 /** Accepts either JSON (text fields only) or multipart (text fields + an optional `logo` file). */
@@ -44,7 +50,7 @@ export async function PUT(request: Request): Promise<Response> {
     return Response.json({ error: "INVALID_BRAND_PROFILE", message: "Brand profile payload failed validation." }, { status: 400 });
   }
 
-  const profile = { ...parsed.data };
+  const profile: BrandProfile = { ...parsed.data };
 
   if (logoFile && logoFile.size > 0) {
     try {

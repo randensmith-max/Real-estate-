@@ -21,11 +21,37 @@ function isPrivateIPv4(ip: string): boolean {
   return false;
 }
 
+/**
+ * IPv4-mapped/-compatible IPv6 addresses (e.g. `::ffff:127.0.0.1`,
+ * `::ffff:7f00:1`) embed a real IPv4 address that dual-stack sockets treat
+ * as that IPv4 address on the wire — so a mapped-loopback address actually
+ * connects to loopback despite "looking like" a distinct IPv6 address.
+ * Extracts the embedded IPv4 (dotted or hex-group form) so it gets the same
+ * private-range check as a literal IPv4 address.
+ */
+function extractIPv4MappedAddress(normalized: string): string | null {
+  const dotted = normalized.match(/^::(ffff:)?(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+  if (dotted) return dotted[2]!;
+
+  const hexGroups = normalized.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (hexGroups) {
+    const hi = parseInt(hexGroups[1]!, 16);
+    const lo = parseInt(hexGroups[2]!, 16);
+    return [(hi >> 8) & 0xff, hi & 0xff, (lo >> 8) & 0xff, lo & 0xff].join(".");
+  }
+
+  return null;
+}
+
 function isPrivateIPv6(ip: string): boolean {
   const normalized = ip.toLowerCase();
   if (normalized === "::1") return true; // loopback
   if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true; // fc00::/7 unique local
   if (normalized.startsWith("fe80")) return true; // link-local
+
+  const mappedV4 = extractIPv4MappedAddress(normalized);
+  if (mappedV4) return isPrivateIPv4(mappedV4);
+
   return false;
 }
 

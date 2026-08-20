@@ -1,14 +1,26 @@
 import path from "node:path";
+import { z } from "zod";
 import { copyFile, rm, mkdir } from "node:fs/promises";
 import { ProjectStore } from "@/lib/storage/project-store";
 import { PROJECTS_DATA_ROOT, RENDERS_ROOT, RENDER_WORK_ROOT } from "@/lib/config/paths";
 import { BrandProfileStore } from "@/lib/brand/brand-profile-store";
 import { BRAND_DATA_ROOT } from "@/lib/config/paths";
 import { renderBrandedReel, HyperFramesRenderError } from "@/lib/media/hyperframes-renderer";
-import type { ReelBrandingData } from "@/lib/media/hyperframes-composition";
 
 const projectStore = new ProjectStore(PROJECTS_DATA_ROOT);
 const brandStore = new BrandProfileStore(BRAND_DATA_ROOT);
+
+// Runtime validation matters here beyond typechecking: these values are interpolated
+// directly into generated HTML (hyperframes-composition.ts). A bare `as ReelBrandingData`
+// cast on parsed JSON would let a caller send e.g. bedrooms as an unescaped HTML string.
+const ReelBrandingDataSchema = z.object({
+  address: z.string().max(200).optional(),
+  cityState: z.string().max(200).optional(),
+  price: z.string().max(100).optional(),
+  bedrooms: z.number().int().nonnegative().max(100).optional(),
+  bathrooms: z.number().nonnegative().max(100).optional(),
+  featureCallout: z.string().max(120).optional(),
+});
 
 /**
  * Overlays branding (Phase 5) on the already-assembled plain reel
@@ -35,7 +47,14 @@ export async function POST(
   }
 
   const body: unknown = await request.json().catch(() => ({}));
-  const data = (body ?? {}) as ReelBrandingData;
+  const parsed = ReelBrandingDataSchema.safeParse(body ?? {});
+  if (!parsed.success) {
+    return Response.json(
+      { error: "INVALID_BRANDING_DATA", message: "Branding data payload failed validation.", issues: parsed.error.issues },
+      { status: 400 }
+    );
+  }
+  const data = parsed.data;
 
   const brand = await brandStore.get();
   const reelPath = path.join(RENDERS_ROOT, projectId, "final-reel.mp4");

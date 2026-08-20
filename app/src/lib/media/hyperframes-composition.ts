@@ -24,11 +24,42 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-/** Scales overlay windows to the reel's actual duration, never overlapping and never overflowing it. */
+const HEX_COLOR = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+/**
+ * Defense in depth for values interpolated directly into a <style> block
+ * (never escaped as text — CSS-context injection is a different risk than
+ * HTML-text injection). The API boundary (PUT /api/brand-profile) already
+ * enforces hex-color format, but this generator must not assume every
+ * caller/every stored record went through that validation.
+ */
+function sanitizeHexColor(value: string | undefined, fallback: string): string {
+  return value && HEX_COLOR.test(value) ? value : fallback;
+}
+
+const MIN_GAP = 0.3;
+
+/**
+ * Scales overlay windows to the reel's actual duration, never overlapping
+ * and never overflowing it — including on very short reels, where the
+ * fixed min-duration clamps below (openDuration >= 1.5s, closeDuration >=
+ * 2s) would otherwise schedule the closing card to start after the video
+ * has already ended (verified empirically on a 1s reel before this
+ * proportional-scaling guard existed: closeStart+closeDuration came out to
+ * 3.8s against a 1s video, so the CTA card would never actually appear).
+ */
 export function computeTimings(totalSeconds: number, hasFeatureCallout: boolean): CompositionTimings {
-  const openDuration = clamp(totalSeconds * 0.18, 1.5, 3);
-  const closeDuration = clamp(totalSeconds * 0.18, 2, 4);
-  const openStart = 0.3;
+  const openStart = Math.min(0.3, totalSeconds * 0.05);
+  let openDuration = clamp(totalSeconds * 0.18, 1.5, 3);
+  let closeDuration = clamp(totalSeconds * 0.18, 2, 4);
+
+  const reserved = openStart + openDuration + MIN_GAP + closeDuration;
+  if (reserved > totalSeconds) {
+    const scale = Math.max(0, (totalSeconds - openStart) / (openDuration + MIN_GAP + closeDuration));
+    openDuration *= scale;
+    closeDuration *= scale;
+  }
+
   const closeStart = Math.max(openStart + openDuration, totalSeconds - closeDuration);
 
   const availableForFeature = closeStart - (openStart + openDuration) - 0.6;
@@ -59,8 +90,8 @@ export function generateComposition(
   videoWidth: number,
   videoHeight: number
 ): string {
-  const primary = brand.primaryColor || "#111111";
-  const secondary = brand.secondaryColor || "#ffffff";
+  const primary = sanitizeHexColor(brand.primaryColor, "#111111");
+  const secondary = sanitizeHexColor(brand.secondaryColor, "#ffffff");
   const totalDuration = Math.ceil(timings.totalSeconds);
 
   const bedBath = [

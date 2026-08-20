@@ -174,6 +174,56 @@ clean 503 if unset, never a boot failure.
   fills the frame throughout; overlays are lower-thirds/title cards, never
   full-screen graphics that hide the video.
 
+## Post-implementation review
+
+A full re-audit was done after all five phases were built (not just fresh
+typecheck/lint/test/build — line-by-line review plus live exploitation
+attempts against the running server). It found and fixed real issues rather
+than confirming everything was already fine:
+
+- **SSRF bypass**: `assertSafeImageUrl` checked literal IPv6 addresses for
+  privacy but not IPv4-mapped IPv6 addresses (`::ffff:127.0.0.1`), which
+  dual-stack sockets treat as the embedded IPv4 address on the wire.
+  Confirmed exploitable, then fixed and locked in with 7 new regression
+  tests (also covering decimal/octal-encoded IPv4 loopback, verified
+  empirically against this environment's actual resolver behavior).
+- **Unvalidated branding input**: `POST /api/projects/[id]/branded-reel`
+  cast its request body to a TypeScript type without runtime validation —
+  `bedrooms`/`bathrooms` were interpolated into generated HTML relying only
+  on the compile-time type, not an actual runtime guarantee. Added zod
+  validation; confirmed live that a crafted non-string `bedrooms` value is
+  now cleanly rejected (400) rather than silently accepted.
+- **CSS-injection via brand colors**: `primaryColor`/`secondaryColor` were
+  interpolated unescaped directly into a `<style>` block with no format
+  validation anywhere — a crafted value could break out of the CSS context
+  into the composition's HTML/JS, which then actually executes in
+  HyperFrames' real headless-browser render. Fixed with strict hex-color
+  validation at both the API boundary and defensively inside the generator
+  itself (in case a stored record predates the validation).
+- **Short-reel timing overflow**: `computeTimings`' fixed minimum-duration
+  clamps could schedule the closing brand card/CTA to start *after* a very
+  short reel had already ended, so it would never actually appear. Verified
+  empirically (a 1s reel scheduled the close at 1.8-3.8s), then fixed with
+  proportional scaling that keeps every overlay window inside the reel's
+  actual duration, with 2 new regression tests across a range of durations.
+- **Stale cross-project UI state**: starting a new import/upload reset the
+  storyboard/analysis but not the previously-built reel/branded-video
+  state, which could reappear (showing the *previous* project's video)
+  once the new project's storyboard reached "has generated scenes" again.
+  Fixed by clearing all downstream state on both new-project actions and
+  storyboard regeneration.
+- Two lower-priority cleanups: a dead `logoPath` field in the brand-profile
+  request schema that looked settable from client JSON but was actually
+  always overwritten server-side (confusing, not exploitable — removed for
+  clarity), and a path-containment check added to the brand-logo file
+  resolution for defense-in-depth consistency with the other serving
+  routes (not currently reachable with an attacker-controlled path, since
+  `logoPath` is always server-generated, but inconsistent to skip it).
+
+All fixes are live-tested against a running server, not just unit-tested —
+see the corresponding test files' regression tests for exact reproduction
+cases.
+
 ## Architecture notes
 
 - **No database.** Project records are single JSON files under

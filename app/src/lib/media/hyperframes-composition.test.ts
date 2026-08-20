@@ -26,6 +26,29 @@ describe("computeTimings", () => {
     const t = computeTimings(60, false);
     expect(t.featureStart).toBeNull();
   });
+
+  it("keeps the closing window within a very short (1s) reel's actual duration", () => {
+    // Regression test: the fixed min-duration clamps (openDuration >= 1.5s,
+    // closeDuration >= 2s) previously produced closeStart+closeDuration = 3.8s
+    // against a 1s video — the closing brand card/CTA would never actually
+    // appear since HyperFrames only runs the timeline for data-duration seconds.
+    const t = computeTimings(1, false);
+    expect(t.closeStart + t.closeDuration).toBeLessThanOrEqual(t.totalSeconds + 0.01);
+    expect(t.openStart + t.openDuration).toBeLessThanOrEqual(t.closeStart + 0.01);
+  });
+
+  it("keeps all windows within bounds across a range of short-to-long durations", () => {
+    for (const duration of [0.2, 0.5, 1, 2, 3, 5, 10, 20, 30, 60, 120]) {
+      const t = computeTimings(duration, true);
+      expect(t.openStart).toBeGreaterThanOrEqual(0);
+      expect(t.openStart + t.openDuration).toBeLessThanOrEqual(t.closeStart + 0.01);
+      expect(t.closeStart + t.closeDuration).toBeLessThanOrEqual(duration + 0.01);
+      if (t.featureStart !== null) {
+        expect(t.featureStart).toBeGreaterThanOrEqual(t.openStart + t.openDuration);
+        expect(t.featureStart + t.featureDuration).toBeLessThanOrEqual(t.closeStart + 0.01);
+      }
+    }
+  });
 });
 
 const BRAND: BrandProfile = {
@@ -90,6 +113,31 @@ describe("generateComposition", () => {
     const timingsNoRoom = computeTimings(3, true);
     const withoutFeature = generateComposition(BRAND, { featureCallout: "open-concept living" }, timingsNoRoom, 1080, 1920);
     expect(withoutFeature).not.toContain("OPEN-CONCEPT LIVING");
+  });
+
+  it("rejects a malformed/malicious color value rather than interpolating it raw into <style>", () => {
+    const timings = computeTimings(20, false);
+    const html = generateComposition(
+      { ...BRAND, primaryColor: "red;}</style><script>alert(1)</script>", secondaryColor: "not-a-color" },
+      {},
+      timings,
+      1080,
+      1920
+    );
+
+    expect(html).not.toContain("</style><script>");
+    expect(html).not.toContain("not-a-color");
+    // Falls back to the safe defaults instead.
+    expect(html).toContain("#111111");
+    expect(html).toContain("#ffffff");
+  });
+
+  it("accepts a well-formed hex color (3- and 6-digit) unchanged", () => {
+    const timings = computeTimings(20, false);
+    const html = generateComposition({ ...BRAND, primaryColor: "#abc", secondaryColor: "#a1b2c3" }, {}, timings, 1080, 1920);
+
+    expect(html).toContain("#abc");
+    expect(html).toContain("#a1b2c3");
   });
 
   it("uses the given video dimensions, not a hardcoded size", () => {

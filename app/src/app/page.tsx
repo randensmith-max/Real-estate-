@@ -47,6 +47,23 @@ export default function Home() {
   const [brandedVideoUrl, setBrandedVideoUrl] = useState<string | null>(null);
   const [featureCallout, setFeatureCallout] = useState("");
 
+  /**
+   * Clears every piece of state derived from the *previous* project when a
+   * new one is imported/uploaded. Without this, a stale reel/branded-video
+   * from an earlier project could still be displayed once the new
+   * project's storyboard reaches "has generated scenes" again — the reel
+   * section's visibility is gated on `storyboard`, not on `reel` itself.
+   */
+  function resetDownstreamState() {
+    setAnalyses(null);
+    setStoryboard(null);
+    setGenerationProgress(null);
+    setReel(null);
+    setBrandedVideoUrl(null);
+    setMusicFile(null);
+    setFeatureCallout("");
+  }
+
   async function handleImport(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
@@ -69,8 +86,7 @@ export default function Home() {
       }
 
       setProject(data);
-      setAnalyses(null);
-      setStoryboard(null);
+      resetDownstreamState();
     } catch {
       setErrorMessage("Something went wrong contacting the server.");
     } finally {
@@ -96,8 +112,7 @@ export default function Home() {
 
       setProject(data);
       setShowFallback(false);
-      setAnalyses(null);
-      setStoryboard(null);
+      resetDownstreamState();
     } catch {
       setErrorMessage("Something went wrong uploading photos.");
     } finally {
@@ -143,6 +158,11 @@ export default function Home() {
       }
 
       setStoryboard(data.storyboard);
+      // A freshly-built storyboard has all-new scene ids with no generated
+      // clips yet — any previously built reel/branded video was assembled
+      // from the old storyboard's scenes and no longer corresponds to it.
+      setReel(null);
+      setBrandedVideoUrl(null);
     } catch {
       setErrorMessage("Something went wrong building the storyboard.");
     } finally {

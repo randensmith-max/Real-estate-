@@ -109,11 +109,25 @@ async function findNewestMp4(dir: string): Promise<string | null> {
   return path.join(dir, withStats[0]!.file);
 }
 
-/** Maps a servable `/api/images/...` path back to its absolute file location under UPLOADS_ROOT. */
+/**
+ * Maps a servable `/api/images/...` path back to its absolute file location
+ * under UPLOADS_ROOT. `logoPath` is always server-generated (never accepted
+ * from a client — see api/brand-profile/route.ts), but this still enforces
+ * the same path-containment check as the images/videos/renders serving
+ * routes for defense-in-depth consistency.
+ */
 function resolveServedAssetPath(servedPath: string): string {
   const parts = servedPath.split("/").filter(Boolean); // ["api", "images", projectId, filename]
   const [, , projectId, filename] = parts;
-  return path.join(UPLOADS_ROOT, projectId!, filename!);
+  if (!projectId || !filename) {
+    throw new Error(`Malformed served asset path: ${servedPath}`);
+  }
+  const resolvedRoot = path.resolve(UPLOADS_ROOT);
+  const resolvedPath = path.resolve(UPLOADS_ROOT, projectId, filename);
+  if (!resolvedPath.startsWith(resolvedRoot + path.sep)) {
+    throw new Error(`Refusing to read asset outside UPLOADS_ROOT: ${servedPath}`);
+  }
+  return resolvedPath;
 }
 
 function packageJson() {

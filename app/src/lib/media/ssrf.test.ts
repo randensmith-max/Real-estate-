@@ -34,6 +34,46 @@ describe("assertSafeImageUrl", () => {
     await expect(assertSafeImageUrl("http://[::1]/image.jpg")).rejects.toBeInstanceOf(UnsafeImageUrlError);
   });
 
+  it("rejects an IPv4-mapped IPv6 loopback address (dotted form)", async () => {
+    // ::ffff:127.0.0.1 is a real address dual-stack sockets treat as 127.0.0.1 on the
+    // wire — a classic SSRF-filter bypass if only the outer IPv6 shape is checked.
+    await expect(assertSafeImageUrl("http://[::ffff:127.0.0.1]/image.jpg")).rejects.toBeInstanceOf(
+      UnsafeImageUrlError
+    );
+  });
+
+  it("rejects an IPv4-mapped IPv6 loopback address (hex-group form)", async () => {
+    // Node/the URL parser normalizes the dotted form above to this canonical hex-group
+    // form (7f00:1 = 0x7f000001 = 127.0.0.1) before our code even sees it.
+    await expect(assertSafeImageUrl("http://[::ffff:7f00:1]/image.jpg")).rejects.toBeInstanceOf(
+      UnsafeImageUrlError
+    );
+  });
+
+  it("rejects an IPv4-mapped IPv6 address for a different private range (10.x)", async () => {
+    await expect(assertSafeImageUrl("http://[::ffff:10.0.0.5]/image.jpg")).rejects.toBeInstanceOf(
+      UnsafeImageUrlError
+    );
+  });
+
+  it("rejects decimal-encoded loopback (127.0.0.1 == 2130706433)", async () => {
+    // This sandbox's resolver (glibc-style getaddrinfo) accepts legacy decimal IPv4
+    // notation and resolves it straight to 127.0.0.1 — verified empirically, not
+    // assumed. The guard must catch this via the resolved address, not the literal
+    // hostname string, since "2130706433" doesn't look like an IP syntactically.
+    await expect(assertSafeImageUrl("http://2130706433/image.jpg")).rejects.toBeInstanceOf(
+      UnsafeImageUrlError
+    );
+  });
+
+  it("rejects octal-encoded loopback (0177.0.0.1 == 127.0.0.1)", async () => {
+    await expect(assertSafeImageUrl("http://0177.0.0.1/image.jpg")).rejects.toBeInstanceOf(UnsafeImageUrlError);
+  });
+
+  it("rejects the shorthand loopback form 127.1", async () => {
+    await expect(assertSafeImageUrl("http://127.1/image.jpg")).rejects.toBeInstanceOf(UnsafeImageUrlError);
+  });
+
   it("rejects non-http(s) schemes", async () => {
     await expect(assertSafeImageUrl("file:///etc/passwd")).rejects.toBeInstanceOf(UnsafeImageUrlError);
     await expect(assertSafeImageUrl("ftp://example.com/image.jpg")).rejects.toBeInstanceOf(
