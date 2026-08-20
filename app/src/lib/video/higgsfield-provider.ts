@@ -127,6 +127,28 @@ export class HiggsfieldProvider implements VideoGenerationProvider {
   }
 }
 
+/** Narrow shape of an axios error, without depending on axios's types here. */
+interface AxiosLikeError {
+  response?: { status?: number; data?: unknown };
+  config?: { url?: string };
+  message: string;
+}
+
+function isAxiosLikeError(error: unknown): error is AxiosLikeError {
+  return typeof error === "object" && error !== null && "response" in error && "message" in error;
+}
+
+/** Strips query-string params (presigned-URL signatures/tokens) before surfacing a URL in an error message. */
+function urlHostAndPath(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    const parsed = new URL(url);
+    return `${parsed.hostname}${parsed.pathname}`;
+  } catch {
+    return undefined;
+  }
+}
+
 function wrapHiggsfieldError(error: unknown, action: string): VideoGenerationError {
   if (error instanceof AuthenticationError) {
     return new VideoGenerationError(`Higgsfield authentication failed while ${action}.`, false, error);
@@ -139,6 +161,28 @@ function wrapHiggsfieldError(error: unknown, action: string): VideoGenerationErr
     const retryable = status === 429 || status === 502 || status === 503 || status === 504;
     return new VideoGenerationError(
       `Higgsfield API error while ${action}: ${error.message}`,
+      retryable,
+      error
+    );
+  }
+  if (isAxiosLikeError(error)) {
+    const status = error.response?.status;
+    const host = urlHostAndPath(error.config?.url);
+    const bodyText =
+      typeof error.response?.data === "string"
+        ? error.response.data.slice(0, 500)
+        : error.response?.data
+          ? JSON.stringify(error.response.data).slice(0, 500)
+          : undefined;
+    const detailParts = [
+      status ? `HTTP ${status}` : undefined,
+      host ? `from ${host}` : undefined,
+      bodyText ? `— ${bodyText}` : undefined,
+    ].filter(Boolean);
+    const detail = detailParts.length > 0 ? ` (${detailParts.join(" ")})` : "";
+    const retryable = status === 429 || status === 502 || status === 503 || status === 504;
+    return new VideoGenerationError(
+      `Unexpected error while ${action}: ${error.message}${detail}`,
       retryable,
       error
     );
