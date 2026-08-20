@@ -22,6 +22,14 @@ function optionalNumber(value: FormDataEntryValue | null): number | undefined {
  * Fallback import path (Technical Plan Phase-1 instruction: first-class
  * feature, not an afterthought). Accepts manually uploaded photos plus
  * optional user-entered facts — never inferred, only what the user typed.
+ *
+ * An optional `projectId` field appends the uploaded photos to that
+ * existing project instead of creating a new one — for adding more photos
+ * (e.g. more exterior angles found after the first upload) without losing
+ * the storyboard work already done on the first batch. Because the photo
+ * set changed, any existing `imageAnalyses`/`storyboard`/`reel` are cleared
+ * — they were built from the old photo set and would silently omit the
+ * newly added photos otherwise; the client re-runs Analyze/Storyboard.
  */
 export async function POST(request: Request): Promise<Response> {
   const formData = await request.formData().catch(() => null);
@@ -37,19 +45,25 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const listing: ImportedListing = {
-    sourceUrl: "manual-upload",
-    platform: "manual",
-    address: optionalString(formData.get("address")),
-    price: optionalString(formData.get("price")),
-    bedrooms: optionalNumber(formData.get("bedrooms")),
-    bathrooms: optionalNumber(formData.get("bathrooms")),
-    propertyType: optionalString(formData.get("propertyType")),
-    description: optionalString(formData.get("description")),
-    imageUrls: [],
-  };
+  const existingProjectId = optionalString(formData.get("projectId"));
+  const existingProject = existingProjectId ? await projectStore.get(existingProjectId) : null;
+  if (existingProjectId && !existingProject) {
+    return Response.json({ error: "PROJECT_NOT_FOUND", message: "No such project." }, { status: 404 });
+  }
 
-  const project = await projectStore.create("manual_upload", listing);
+  const project =
+    existingProject ??
+    (await projectStore.create("manual_upload", {
+      sourceUrl: "manual-upload",
+      platform: "manual",
+      address: optionalString(formData.get("address")),
+      price: optionalString(formData.get("price")),
+      bedrooms: optionalNumber(formData.get("bedrooms")),
+      bathrooms: optionalNumber(formData.get("bathrooms")),
+      propertyType: optionalString(formData.get("propertyType")),
+      description: optionalString(formData.get("description")),
+      imageUrls: [],
+    }));
 
   const savedImageUrls: string[] = [];
   const rejected: string[] = [];
@@ -73,8 +87,22 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const finalListing = { ...listing, imageUrls: savedImageUrls };
-  await projectStore.save({ ...project, listing: finalListing });
+  const finalListing = {
+    ...project.listing,
+    imageUrls: [...project.listing.imageUrls, ...savedImageUrls],
+  };
+
+  if (existingProject) {
+    await projectStore.save({
+      ...project,
+      listing: finalListing,
+      imageAnalyses: undefined,
+      storyboard: undefined,
+      reel: undefined,
+    });
+  } else {
+    await projectStore.save({ ...project, listing: finalListing });
+  }
 
   return Response.json({ projectId: project.id, listing: finalListing, rejected }, { status: 200 });
 }

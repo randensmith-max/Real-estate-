@@ -120,6 +120,37 @@ export default function Home() {
     }
   }
 
+  async function handleAddMorePhotos(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!project) return;
+    setBusy(true);
+    setErrorMessage(null);
+
+    const formData = new FormData(event.currentTarget);
+    formData.set("projectId", project.projectId);
+
+    try {
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const data = (await res.json()) as ImportSuccessResponse | ImportErrorResponse;
+
+      if (!res.ok || "error" in data) {
+        setErrorMessage((data as ImportErrorResponse).message);
+        return;
+      }
+
+      setProject(data);
+      event.currentTarget.reset();
+      // The server cleared imageAnalyses/storyboard/reel since the photo set
+      // changed (see /api/upload) — mirror that here so stale UI state isn't
+      // shown as if it still matched the current photos.
+      resetDownstreamState();
+    } catch {
+      setErrorMessage("Something went wrong uploading photos.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleAnalyze() {
     if (!project) return;
     setBusy(true);
@@ -447,6 +478,19 @@ export default function Home() {
               <img key={src} src={src} alt="Property" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 8 }} />
             ))}
           </div>
+
+          <form onSubmit={handleAddMorePhotos} style={{ display: "flex", gap: 8, marginTop: 16, alignItems: "center" }}>
+            <input type="file" name="photos" accept="image/jpeg,image/png,image/webp" multiple required />
+            <button type="submit" disabled={busy} style={secondaryBtn}>
+              Add More Photos
+            </button>
+          </form>
+          {(analyses || storyboard) && (
+            <p style={{ color: "#b3261e", fontSize: 12, marginTop: 6 }}>
+              Adding photos clears the current analysis/storyboard — you&apos;ll need to re-run Analyze and Generate
+              Storyboard afterward so the new photos are included.
+            </p>
+          )}
 
           <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
             <button type="button" onClick={handleAnalyze} disabled={busy} style={primaryBtn}>
