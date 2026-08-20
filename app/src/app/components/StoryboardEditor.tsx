@@ -10,6 +10,8 @@ interface Props {
   onApproveAll: () => void;
   onGenerateApproved: () => void;
   onRegenerateScene: (sceneId: string) => void;
+  onUsePhotoPan: (sceneId: string) => void;
+  onUsePhotoPanForAll: () => void;
   onSetSceneStatus: (sceneId: string, status: "approved" | "rejected") => void;
   generationProgress: { current: number; total: number } | null;
   busy: boolean;
@@ -36,6 +38,8 @@ export function StoryboardEditor({
   onApproveAll,
   onGenerateApproved,
   onRegenerateScene,
+  onUsePhotoPan,
+  onUsePhotoPanForAll,
   onSetSceneStatus,
   generationProgress,
   busy,
@@ -162,6 +166,17 @@ export function StoryboardEditor({
                     </button>
                   </div>
                 )}
+
+                {(scene.status === "approved" || scene.status === "rejected") && (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button type="button" onClick={() => onUsePhotoPan(scene.id)} disabled={busy} style={smallLabelBtn}>
+                      Use Photo Pan Instead
+                    </button>
+                    <span style={{ fontSize: 11, color: "#888", alignSelf: "center" }}>
+                      No AI video — pans/zooms over the still photo
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div style={{ display: "grid", gap: 4 }}>
@@ -197,6 +212,11 @@ export function StoryboardEditor({
         {hasGeneratable && (
           <button type="button" onClick={onGenerateApproved} disabled={busy} style={primaryBtn}>
             Generate Cinematic Clips
+          </button>
+        )}
+        {hasGeneratable && (
+          <button type="button" onClick={onUsePhotoPanForAll} disabled={busy} style={secondaryBtn}>
+            Use Photo Pan for All
           </button>
         )}
         {generationProgress && (

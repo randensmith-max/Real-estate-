@@ -107,6 +107,49 @@ clean 503 if unset, never a boot failure.
   moderation rejections) mark only that scene `"rejected"` with a visible
   reason — nothing is silently retried or hidden.
 
+### Photo-pan fallback (no video-generation provider required)
+
+Higgsfield (or any future video-generation provider) is a third-party
+dependency outside this app's control — it can be down, rate-limited, or
+mid-outage on the provider's own infrastructure (observed live: their image
+upload step returning a `SignatureDoesNotMatch` from their own S3 bucket,
+independent of credentials/billing/photos on this app's side). Rather than
+leaving a project fully blocked when that happens:
+
+- `POST /api/projects/[id]/scenes/[sceneId]/photo-pan`
+  (`src/app/api/projects/[projectId]/scenes/[sceneId]/photo-pan/route.ts`) —
+  renders a "Ken Burns" pan/zoom clip directly from the scene's source photo
+  using ffmpeg's `zoompan` filter (`src/lib/media/ken-burns.ts`), entirely
+  locally, no external provider or network call involved. Output already
+  matches the canonical reel format (1080×1920/30fps/H.264), so it flows
+  into `assembleReel` identically to a downloaded Higgsfield clip — same
+  `status`/`generatedVideoUrl` fields, same reel-assembly eligibility.
+- 8 camera-motion labels (`push_in`, `pull_back`, `pan_left`, `pan_right`,
+  `dolly_forward`, `subtle_parallax`, `gentle_orbit`, `static`) each map to a
+  distinct deterministic zoom/x/y expression triple; true 3D
+  parallax/orbit isn't possible from a single flat photo, so these are
+  tasteful 2D approximations, not a claim of equivalence to AI-generated
+  camera movement. An unrecognized motion string falls back to a subtle
+  static-ish zoom rather than throwing.
+- UI: a "Use Photo Pan Instead" button per scene, plus a "Use Photo Pan for
+  All" bulk action, both available wherever the existing Higgsfield
+  generate/regenerate actions are (`StoryboardEditor.tsx`).
+- **Live-tested**: found and fixed a real bug this way — `d` (the zoompan
+  option controlling frame-hold count) is *not* readable inside the
+  `zoom`/`x`/`y` expressions themselves (only `on`, the current output
+  frame, is), so the frame-count denominator has to be inlined as a literal
+  per render rather than referenced symbolically. Caught by actually running
+  the filter against a real ffmpeg binary, not by the unit tests alone.
+  Verified pixel-level: `push_in`/`pan_right` show real inter-frame motion
+  (mean abs diff 11.2 / 26.6 on a 0-255 grayscale diff), `static` is
+  correctly near-frozen (0.06). Also verified against a running server:
+  upload → manual scene → `photo-pan` → servable clip → `reel` assembly, all
+  succeeded end to end.
+- 3 integration tests against the real ffmpeg binary
+  (`src/lib/media/ken-burns.test.ts`): every camera motion renders to the
+  correct format/duration, an unrecognized motion doesn't throw, and a
+  missing source image correctly raises `FFmpegError`.
+
 ## Phase 4: FFmpeg reel assembly
 
 - `POST /api/projects/[id]/reel` (multipart, optional `music` field) —

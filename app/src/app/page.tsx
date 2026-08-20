@@ -248,6 +248,54 @@ export default function Home() {
     setBusy(false);
   }
 
+  async function photoPanScene(sceneId: string): Promise<StoryboardScene | null> {
+    if (!project) return null;
+    try {
+      const res = await fetch(`/api/projects/${project.projectId}/scenes/${sceneId}/photo-pan`, { method: "POST" });
+      const data = (await res.json()) as { scene?: StoryboardScene; message?: string };
+
+      if (!res.ok && !data.scene) {
+        setErrorMessage(data.message ?? "Photo-pan rendering failed.");
+        return null;
+      }
+      return data.scene ?? null;
+    } catch {
+      setErrorMessage("Something went wrong rendering the photo pan.");
+      return null;
+    }
+  }
+
+  async function handleUsePhotoPan(sceneId: string) {
+    setBusy(true);
+    setErrorMessage(null);
+    const updatedScene = await photoPanScene(sceneId);
+    if (updatedScene) {
+      setStoryboard((prev) => (prev ? prev.map((s) => (s.id === sceneId ? updatedScene : s)) : prev));
+    }
+    setBusy(false);
+  }
+
+  async function handleUsePhotoPanForAll() {
+    if (!storyboard) return;
+    const toRender = storyboard.filter((s) => s.status === "approved" || s.status === "rejected");
+    if (toRender.length === 0) return;
+
+    setBusy(true);
+    setErrorMessage(null);
+
+    for (let i = 0; i < toRender.length; i++) {
+      setGenerationProgress({ current: i + 1, total: toRender.length });
+      const sceneId = toRender[i]!.id;
+      const updatedScene = await photoPanScene(sceneId);
+      if (updatedScene) {
+        setStoryboard((prev) => (prev ? prev.map((s) => (s.id === sceneId ? updatedScene : s)) : prev));
+      }
+    }
+
+    setGenerationProgress(null);
+    setBusy(false);
+  }
+
   function handleSetSceneStatus(sceneId: string, status: "approved" | "rejected") {
     if (!storyboard) return;
     const updated = storyboard.map((s) => (s.id === sceneId ? { ...s, status } : s));
@@ -428,6 +476,8 @@ export default function Home() {
           onApproveAll={() => saveStoryboard(storyboard.map((s) => ({ ...s, status: "approved" })))}
           onGenerateApproved={handleGenerateApproved}
           onRegenerateScene={handleRegenerateScene}
+          onUsePhotoPan={handleUsePhotoPan}
+          onUsePhotoPanForAll={handleUsePhotoPanForAll}
           onSetSceneStatus={handleSetSceneStatus}
           generationProgress={generationProgress}
           busy={busy}
