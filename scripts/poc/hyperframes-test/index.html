@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="vendor/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #000;
+      }
+      body {
+        font-family: "Inter", sans-serif;
+      }
+      #bg-image {
+        width: 1920px;
+        height: 1080px;
+        object-fit: cover;
+      }
+      #scrim {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(to top, rgba(0, 0, 0, 0.75) 0%, rgba(0, 0, 0, 0) 45%);
+      }
+      #title {
+        position: absolute;
+        left: 96px;
+        bottom: 220px;
+        color: #ffffff;
+        font-size: 72px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        text-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+      }
+      #price-card {
+        position: absolute;
+        left: 96px;
+        bottom: 96px;
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        background: rgba(15, 20, 28, 0.72);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 16px;
+        padding: 20px 32px;
+        color: #ffffff;
+      }
+      #price-card .price {
+        font-size: 44px;
+        font-weight: 700;
+      }
+      #price-card .divider {
+        width: 1px;
+        height: 36px;
+        background: rgba(255, 255, 255, 0.3);
+      }
+      #price-card .meta {
+        font-size: 28px;
+        font-weight: 400;
+        opacity: 0.9;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="6"
+      data-width="1920"
+      data-height="1080"
+    >
+      <img
+        id="bg-image"
+        class="clip"
+        src="assets/sample-property.jpg"
+        data-start="0"
+        data-duration="6"
+        data-track-index="0"
+      />
+
+      <div id="scrim" class="clip" data-start="0" data-duration="6" data-track-index="1"></div>
+
+      <div id="title" class="clip" data-start="0.5" data-duration="5.5" data-track-index="2">
+        4 BEDROOM DETACHED HOME
+      </div>
+
+      <div id="price-card" class="clip" data-start="1" data-duration="5" data-track-index="3">
+        <span class="price">&pound;650,000</span>
+        <span class="divider"></span>
+        <span class="meta">4 bed &middot; 2 bath &middot; Detached</span>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      tl.from("#title", { opacity: 0, y: 40, duration: 0.6, ease: "power2.out" }, 0.5);
+      tl.from(
+        "#price-card",
+        { opacity: 0, y: 30, duration: 0.6, ease: "power2.out" },
+        1
+      );
+      tl.to("#title", { opacity: 0, duration: 0.4, ease: "power1.in" }, 5.6);
+      tl.to("#price-card", { opacity: 0, duration: 0.4, ease: "power1.in" }, 5.6);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>
