@@ -1,0 +1,19 @@
+# Render blueprint for a TEMPORARY test deployment of Flatland Operations.
+# Free plan: no persistent disk — all data is erased whenever the service restarts,
+# redeploys, or sleeps after ~15 minutes without visits. Use it for trying the app only.
+services:
+  - type: web
+    name: flatland-operations
+    runtime: node
+    plan: free
+    rootDir: flatland-operations
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /tmp/flatland-data
