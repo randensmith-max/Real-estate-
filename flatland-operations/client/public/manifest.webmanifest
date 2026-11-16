@@ -1,0 +1,9 @@
+{
+  "name": "Flatland Operations",
+  "short_name": "Flatland Ops",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f7f5",
+  "theme_color": "#12301f",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
