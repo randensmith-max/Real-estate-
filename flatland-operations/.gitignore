@@ -3,3 +3,4 @@ dist/
 data/
 .env
 *.log
+tests/e2e/output/

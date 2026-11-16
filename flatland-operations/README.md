@@ -24,7 +24,8 @@ During development, run `npm run dev`. The API runs on :4000 and Vite serves the
 | `npm run dev` | API (auto-restart) + Vite dev server |
 | `npm run build` | Production build of the web app |
 | `npm start` | Production server (API + built UI) |
-| `npm test` | Integration tests (auth, permissions, time clock, corrections, locking, inventory, inspections) |
+| `npm test` | Server integration tests, including the Phase 1 acceptance suite |
+| `npm run test:e2e:phase1` | Browser acceptance run with owner, manager and employee sessions (needs Playwright and a server on an empty data folder) |
 | `npm run typecheck` | TypeScript check for server and client |
 | `npm run backup` | Writes a consistent database snapshot to `DATA_DIR/backups` |
 
@@ -36,7 +37,8 @@ Owners and managers add people under **Team → Add person**. The app creates a 
 
 ## Documentation
 
+- [docs/DATABASE.md](docs/DATABASE.md): how the main records relate (ER diagram, constraints, history rules)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): stack, data model, security model, and how the phases fit together
 - [docs/OPERATIONS.md](docs/OPERATIONS.md): deployment, HTTPS, backups, restore, export
 - [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md): e-signature and QuickBooks plans, plus other external dependencies
-- [docs/STATUS.md](docs/STATUS.md): what works today, what needs configuration, and what's left
+- [docs/STATUS.md](docs/STATUS.md): phase-by-phase status and the Phase 1 report

@@ -45,6 +45,13 @@ function toUtc(db: DB, value: string, field: string): string {
   }
 }
 
+/** Managers may not correct their own time — only an owner may (mirrors the self-approval rule). */
+function assertNotSelfEdit(req: Request, targetUserId: number) {
+  if (targetUserId === req.user!.id && req.user!.role !== "owner") {
+    throw forbidden("You can't correct your own time. Ask another manager or the owner.");
+  }
+}
+
 function assertClockableJob(db: DB, req: Request, jobId: number | null) {
   if (jobId === null) return;
   const job = db.prepare("SELECT status FROM jobs WHERE id = ?").get(jobId) as { status: string } | undefined;
@@ -169,6 +176,7 @@ export function timeRoutes(db: DB) {
 
   r.put("/entries/:id", requirePerm("time.edit"), (req, res) => {
     const id = parseId(req.params.id);
+    assertNotSelfEdit(req, getEntry(db, id).user_id);
     const b = z
       .object({
         clock_in_at: z.string().optional(),
@@ -210,6 +218,7 @@ export function timeRoutes(db: DB) {
       .parse(req.body);
     const target = db.prepare("SELECT status FROM users WHERE id = ?").get(b.user_id) as { status: string } | undefined;
     if (!target) throw notFound("Person");
+    assertNotSelfEdit(req, b.user_id);
     if (b.job_id && !db.prepare("SELECT 1 FROM jobs WHERE id = ?").get(b.job_id)) throw badRequest("Job not found.");
     const entry = addManualEntry(
       db,
@@ -230,7 +239,9 @@ export function timeRoutes(db: DB) {
 
   r.post("/entries/:id/void", requirePerm("time.edit"), (req, res) => {
     const b = z.object({ reason }).parse(req.body);
-    voidEntry(db, parseId(req.params.id), b.reason, req.user!.id, req.ip);
+    const vid = parseId(req.params.id);
+    assertNotSelfEdit(req, getEntry(db, vid).user_id);
+    voidEntry(db, vid, b.reason, req.user!.id, req.ip);
     res.json({ ok: true });
   });
 
@@ -339,6 +350,8 @@ export function timeRoutes(db: DB) {
   r.post("/timesheets/:userId/:week/approve", requirePerm("timesheets.approve"), (req, res) => {
     const { userId, week, start, end } = weekParams(req);
     if (userId === req.user!.id && req.user!.role !== "owner") throw forbidden("Your own timesheet must be approved by someone else.");
+    // Approving locks the week, so it must be over — otherwise the employee couldn't clock in for the rest of it.
+    if (end > nowIso()) throw conflict("This week isn't over yet. Timesheets can be approved once the week ends.");
     const person = db.prepare("SELECT first_name || ' ' || last_name AS name FROM users WHERE id = ?").get(userId) as { name: string } | undefined;
     if (!person) throw notFound("Person");
     db.transaction(() => {

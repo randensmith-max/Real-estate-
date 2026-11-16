@@ -278,7 +278,7 @@ export function PersonPage() {
                       <li key={j.id}>
                         <Link className="grow" to={`/jobs/${j.id}`}>#{j.job_number} {j.name}</Link>
                         <span className="muted small">{fmtDateTime(j.scheduled_start)}</span>
-                        <span className="mono small">{fmtHours(j.gross_hours)}</span>
+                        <span className="mono small">{fmtHours(j.worked_hours)}</span>
                         <StatusBadge status={j.status} />
                       </li>
                     ))}

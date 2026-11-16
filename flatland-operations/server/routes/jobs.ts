@@ -62,11 +62,12 @@ export function jobRoutes(db: DB) {
   function setAssignments(jobId: number, userIds: number[], actorId: number): string[] {
     const current = (db.prepare("SELECT user_id FROM job_assignments WHERE job_id = ?").all(jobId) as { user_id: number }[]).map((r) => r.user_id);
     const want = [...new Set(userIds)];
-    const users = want.length
-      ? (db.prepare(`SELECT id, status FROM users WHERE id IN (${want.map(() => "?").join(",")})`).all(...want) as { id: number; status: string }[])
-      : [];
-    if (users.length !== want.length || users.some((u) => u.status !== "active")) throw badRequest("One or more selected people are not active users.");
     const add = want.filter((id) => !current.includes(id));
+    // Only newly added people must be active; people already on the job stay even if later deactivated.
+    const users = add.length
+      ? (db.prepare(`SELECT id, status FROM users WHERE id IN (${add.map(() => "?").join(",")})`).all(...add) as { id: number; status: string }[])
+      : [];
+    if (users.length !== add.length || users.some((u) => u.status !== "active")) throw badRequest("One or more selected people are not active users.");
     const remove = current.filter((id) => !want.includes(id));
     const ins = db.prepare("INSERT INTO job_assignments (job_id, user_id, assigned_by) VALUES (?,?,?)");
     const del = db.prepare("DELETE FROM job_assignments WHERE job_id = ? AND user_id = ?");
@@ -85,13 +86,13 @@ export function jobRoutes(db: DB) {
   function setEquipment(jobId: number, itemIds: number[], actorId: number): string[] {
     const current = (db.prepare("SELECT item_id FROM job_equipment WHERE job_id = ?").all(jobId) as { item_id: number }[]).map((r) => r.item_id);
     const want = [...new Set(itemIds)];
-    const items = want.length
-      ? (db.prepare(`SELECT id, name, kind, status FROM inventory_items WHERE id IN (${want.map(() => "?").join(",")})`).all(...want) as { id: number; name: string; kind: string; status: string }[])
+    const add = want.filter((id) => !current.includes(id));
+    const items = add.length
+      ? (db.prepare(`SELECT id, name, kind, status FROM inventory_items WHERE id IN (${add.map(() => "?").join(",")})`).all(...add) as { id: number; name: string; kind: string; status: string }[])
       : [];
-    if (items.length !== want.length || items.some((i) => i.kind !== "equipment" || i.status !== "active")) {
+    if (items.length !== add.length || items.some((i) => i.kind !== "equipment" || i.status !== "active")) {
       throw badRequest("Only active equipment can be assigned to a job.");
     }
-    const add = want.filter((id) => !current.includes(id));
     const remove = current.filter((id) => !want.includes(id));
     add.forEach((i) => db.prepare("INSERT INTO job_equipment (job_id, item_id, assigned_by) VALUES (?,?,?)").run(jobId, i, actorId));
     remove.forEach((i) => db.prepare("DELETE FROM job_equipment WHERE job_id = ? AND item_id = ?").run(jobId, i));

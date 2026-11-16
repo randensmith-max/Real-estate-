@@ -135,7 +135,7 @@ export function ClockWidget({ compact }: { compact?: boolean }) {
                   Start break
                 </Button>
               )}
-              <Button size="lg" icon={Repeat} onClick={() => setSwitchOpen(true)}>
+              <Button size="lg" icon={Repeat} onClick={() => { setJobId(cur.job_id ? String(cur.job_id) : ""); setSwitchOpen(true); }}>
                 Change job
               </Button>
             </div>

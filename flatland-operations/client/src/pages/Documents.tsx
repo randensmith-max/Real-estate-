@@ -241,7 +241,6 @@ export function DocumentDetailPage() {
                   ) : (
                     <div className="stack tight">
                       <span className="muted small">E-signature provider not connected. Signature requests, signer status, completion certificates and signed final copies will appear here once a provider is configured (Phase 3).</span>
-                      {manage && <Button size="sm" disabled>Request signatures</Button>}
                     </div>
                   )}
                 </Card>

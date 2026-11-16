@@ -130,6 +130,7 @@ export function TimesheetDetailPage() {
   const [reopen, setReopen] = useState(false);
   const [busy, setBusy] = useState(false);
   const editable = can("time.edit");
+  const selfOk = Number(userId) !== me!.user.id || me!.user.role === "owner";
 
   return (
     <PageState loading={loading && !data} error={error}>
@@ -150,8 +151,8 @@ export function TimesheetDetailPage() {
                 <>
                   <Button className="icon" onClick={() => nav(`/timesheets/${userId}/${data!.prevWeek}`)}><ChevronLeft size={18} /></Button>
                   <Button className="icon" onClick={() => nav(`/timesheets/${userId}/${data!.nextWeek}`)}><ChevronRight size={18} /></Button>
-                  {editable && !locked && <Button icon={PlusCircle} onClick={() => setAdding(true)}>Add missing shift</Button>}
-                  {can("timesheets.approve") && !locked && (Number(userId) !== me!.user.id || me!.user.role === "owner") && (
+                  {editable && !locked && selfOk && <Button icon={PlusCircle} onClick={() => setAdding(true)}>Add missing shift</Button>}
+                  {can("timesheets.approve") && !locked && addDaysStr(week, 7) <= todayLocal() && (Number(userId) !== me!.user.id || me!.user.role === "owner") && (
                     <Button variant="primary" icon={CheckCircle2} busy={busy} onClick={async () => {
                       setBusy(true);
                       try { await api.post(`/time/timesheets/${userId}/${week}/approve`); toast("Timesheet approved"); reload(); }
@@ -164,6 +165,7 @@ export function TimesheetDetailPage() {
               }
             />
             {locked && <div style={{ marginBottom: 14 }}><Alert kind="success"><Lock size={14} /> This week is approved and locked. Reopen it to make corrections.</Alert></div>}
+            {!locked && addDaysStr(week, 7) > todayLocal() && can("timesheets.approve") && <div style={{ marginBottom: 14 }}><Alert kind="info">This week is still in progress. It can be approved after {fmtDateShort(addDaysStr(week, 6))}.</Alert></div>}
             {timesheet.status === "submitted" && <div style={{ marginBottom: 14 }}><Alert kind="info">Submitted by the employee {fmtDateTime(timesheet.submitted_at)}{timesheet.employee_note ? ` — "${timesheet.employee_note}"` : ""}</Alert></div>}
             <div className="card">
               {(entries as D[]).length ? (
@@ -192,7 +194,7 @@ export function TimesheetDetailPage() {
                             </td>
                             <td className="right nowrap">
                               {e.revision_count > 0 && <Button size="sm" variant="ghost" icon={History} onClick={() => setHistoryFor(e.id)}>{e.revision_count}</Button>}
-                              {editable && !locked && e.status !== "void" && <Button size="sm" onClick={() => setEdit(e)}>Correct</Button>}
+                              {editable && !locked && selfOk && e.status !== "void" && <Button size="sm" onClick={() => setEdit(e)}>Correct</Button>}
                             </td>
                           </tr>
                         )),

@@ -1,96 +1,105 @@
-# Build status
+# Build status by phase
 
-## Functional now (backed by the database and enforced on the server)
+Development follows a phase gate. A phase is **verified** only after its workflows pass automated tests and a UI acceptance run with separate owner, manager and employee accounts.
 
-**Phase 1: core operations (complete)**
+| Phase | Code | Verification |
+|---|---|---|
+| 1 Core operations | Complete | **Verified** (see below). Waiting for the owner's own review. |
+| 2 Equipment & inventory | Written ahead of schedule | Not yet verified. Basic tests only. |
+| 3 Documents & inspections | Partly written (no e-signature) | Not yet verified |
+| 4 Reporting & integrations | Reports written; QuickBooks not started | Not yet verified |
 
-- **Setup and accounts.** First-run owner setup, sign-in, sign-out, and a forced password change on temporary passwords. Managers can reset passwords, and accounts can be deactivated. Login throttling is in place.
-- **Roles** for owner, manager, employee, and subcontractor, with server-side permissions and row-level access. Subcontractors can only clock in when authorized.
-- **Dashboard** with live data:
-  - who's clocked in, with missed-punch flags
-  - today's jobs, and active jobs with estimated vs. actual hours
-  - equipment in use, plus open maintenance and machines that are down
-  - pending signatures
-  - absences and unavailability for the next 7 days
-  - low-stock alerts and approvals waiting
-  - recent activity
-  - quick actions
-  - Employees see a personal version with a large clock button, their own jobs, and their own time off.
-- **Customers.** Create, edit, archive, search, view job history, and attach files. Duplicate names are prevented.
+Code for Phases 2–4 was written early, in the first build pass. It is **not** considered complete until it goes through its own verification and report.
+
+---
+
+## Phase 1: Core Operations
+
+### 1. What was built
+
+- **Accounts and security:**
+  - first-run owner setup, sign-in and sign-out
+  - temporary passwords with a forced change at first sign-in
+  - manager password resets and account deactivation
+  - login lockout, CSRF protection, and secure session cookies
+- **Roles**: owner, manager, employee and subcontractor, with permissions checked on the server for every request, plus record-level rules (for example, staff only see the jobs they're assigned to).
+- **Dashboard:**
+  - the company view for owners and managers, with quick actions
+  - a personal view for employees, with the clock, their jobs, their time off and their documents
+- **Customers**: create, edit, archive, search, job history, files. Duplicate names are blocked.
 - **Jobs:**
-  - auto job numbers, all seven statuses plus Cancelled, and job types
-  - site address, coordinates and directions, schedule, estimated hours, acres, and quote (owner-only)
-  - crew and equipment assignment with overlap warnings
-  - notes, photos and attachments, linked documents, and a full activity history
-  - actual hours come from the time clock, and the first clock-in moves a job to In Progress
-- **Time clock:**
-  - big CLOCK IN / CLOCK OUT buttons, job selection, and breaks
-  - changing jobs mid-shift
-  - live today and this-week totals
-  - duplicate clock-in and invalid clock-out are blocked at the database level
-  - overnight shifts and DST are handled correctly
+  - numbering, types, the seven statuses plus Cancelled, site and directions, schedule, estimate, acres, owner-only quote
+  - crew assignment with double-booking warnings
+  - notes, photos and files, and an activity timeline
+- **Time clock:** clock in and out, job choice, breaks, changing job mid-shift, and live today and this-week totals.
 - **Manager time tools:**
-  - view everyone's hours, and hours by job
-  - correct clock-in and clock-out times, breaks, and the job
-  - add missing shifts, resolve missed punches, and void entries
-  - **every change requires a reason and is kept in an append-only history**
+  - corrections to times, breaks, job and notes
+  - add missing shifts, close missed punches, void shifts
+  - a reason is required for every change, and the full correction history is permanent
 - **Weekly timesheets:**
-  - employee submission
-  - manager approval that locks the week, and reopening with a reason
-  - overtime split, and payroll CSV of approved hours only
-- **Employees:**
-  - profile, employment status, emergency contact, and responsibilities
-  - assigned equipment, training and certifications with expiry, and personnel documents
-  - weekly availability and work history
-  - versioned pay rates (owner only)
-- **Time off.** Requests, approve or deny, cancel, and a team calendar with availability.
+  - employees submit their hours
+  - approving a week locks it, and reopening requires a reason
+  - overtime is split out
+  - payroll CSV of approved hours only
+- **People:**
+  - profiles, emergency contacts, responsibilities
+  - certifications with expiry dates
+  - weekly availability, work history, personnel files
+  - pay rates by effective date (owner only)
+- **Time off**: request, approve or deny, cancel, and a team calendar.
+- **Settings**: company name, time zone and overtime threshold, plus the audit log viewer and a roles reference.
 
-**Phase 2: equipment and inventory (core done)**
+### 2. Fully functional (verified)
 
-- Equipment and consumables:
-  - categories, make, model, year, serial and asset numbers
-  - a QR code generated for every item, and lookup by camera scan or a handheld scanner
-  - photo, location, assignment, purchase information (owner-only costs), hour meter, condition, attachments
-- An append-only movement log covering purchase, usage (on a job), transfer, return, count adjustment, damaged, and missing. Negative stock is blocked, unit cost is a weighted average, and low-stock thresholds are configurable per item.
-- Shop and maintenance:
-  - issues, repairs, preventative work, and shop projects
-  - priority, assignee, labor hours, outside cost, parts drawn from inventory, and downtime tracking
-  - recurring schedules by days or engine hours, with due and overdue reminders
+These were verified with **33 automated server tests** (`npm test`) and a **31-step browser run** using three separate sessions: owner (desktop), manager (desktop) and employee (phone screen) (`npm run test:e2e:phase1`).
 
-**Phase 3: partial.** Inspections are complete; e-signatures are not.
+- **Permissions:**
+  - Employee and subcontractor accounts are refused (403/404) on 17 manager-only endpoints.
+  - Managers are refused on owner-only endpoints.
+  - Signed-out requests are refused everywhere.
+  - Quotes and pay rates are never sent to managers or employees.
+  - A manager editing a job can't erase the owner's quote.
+- **Persistence:** jobs, notes, profiles, availability and an active shift survive page refresh and sign-out/sign-in.
+- **Changes appear everywhere they're used:**
+  - a customer rename shows on job lists and the employee's view
+  - a clock-in shows on the manager's dashboard, the job's crew list (on site) and the team list, and moves the job to In Progress
+  - a manager correction updates the job's actual hours, the weekly total and the employee's own timesheet
+  - an approved time-off request shows on the dashboard and calendar
+- **Clear errors:**
+  - missing or invalid fields are highlighted
+  - duplicate customers are refused
+  - impossible times (out before in, overlaps, future times, times that don't exist because of daylight saving) are refused with a readable message
+  - weak passwords are refused
+  - a failed sign-in doesn't reveal whether the account exists
+- **Audit:** every change listed above writes to the audit history; the tests check 14 kinds of entries. Changes are recorded field by field, and the history can't be edited or deleted.
 
-- Inspections:
-  - customizable checklist templates, plus seven optional starter checklists
-  - Pass / Attention / Fail / N/A answers, with notes required on problems
-  - photos, the hour-meter reading, and manager review
-  - failed items automatically open a high-priority equipment issue
-- Documents:
-  - upload, folders, categories, and templates and forms
-  - version history, links to jobs, people, customers and equipment, and visibility and sharing rules
-  - search, inline PDF and image preview, and download
+### 3. Not completed in Phase 1
 
-**Phase 4: partial.** Reports are complete; QuickBooks is not connected.
+- **Email/SMS** for invitations, password resets and notifications. This needs an email service; today the manager hands over temporary passwords.
+- A drag-and-drop schedule/calendar board for jobs. Jobs are scheduled from the job form, and the dashboard shows today's jobs.
+- Splitting one shift across two jobs. "Change job" moves the whole shift; a manager can split it by correcting it and adding a second shift.
 
-- Job cost summary, labor hours and cost, inventory usage, and maintenance cost and downtime, all with CSV export. Everything is clearly labelled as operational estimates, not accounting profit.
+### 4. Known limitations
 
-**Platform**
+- **Times:** times are entered and shown in the company time zone, which suits a one-region company. Changing the zone later doesn't change stored punches, but it does change which day a late-night punch falls on.
+- **Approvals:**
+  - a timesheet can't be approved until its week (Monday–Sunday) is over
+  - managers can't correct or approve their own time; only the owner can
+  - the owner can approve their own
+- **Payroll:** overtime is calculated weekly over the configured threshold. Daily overtime and state-specific rules aren't modelled.
+- **Login lockout:** this is stored in memory, so restarting the server clears it.
+- **Clocking in:** clocking in needs a connection; there's no offline queue. Clock-in location (GPS) has fields in the database but isn't collected yet.
+- **No email:** job and time-off notifications aren't sent, so people see them when they open the app.
+- **Running the browser test:** the browser acceptance test needs Playwright installed and a server with an empty data folder.
 
-- Append-only audit log with a viewer.
-- Company settings: name, time zone, and overtime threshold.
-- Automatic daily backups and a "Back up now" button.
-- Full JSON and per-table CSV export.
-- Responsive layout: sidebar on desktop, bottom navigation on phones. Installable on a phone's home screen.
+### 5. Owner testing before Phase 2
 
-## Needs configuration before production
+Please try these yourself, with real people and real devices:
 
-- **HTTPS hosting** and a persistent `DATA_DIR`. See OPERATIONS.md.
-- **Off-site backup copies.** The app writes its backups locally only.
-- **Pay rates** and **equipment operating costs**, so cost reports are meaningful.
-
-## Not built yet
-
-- **E-signature provider adapter and webhook.** This needs a provider account (see INTEGRATIONS.md). The "Request signatures" button is disabled, and the API returns 501.
-- **QuickBooks Online sync.** This needs an Intuit developer app.
-- **Email/SMS notifications**, such as invites, approvals, and maintenance alerts.
-- Offline punch queue, a drag-and-drop schedule board, and a multi-location UI. The `locations` table already exists.
-- Signature capture on inspections. The `requires_signature` flag and `signature_request_id` already exist and will use the e-signature provider.
+1. Install the app on the phones your crew actually uses (Add to Home Screen) and clock in and out in the field, with gloves, in sun and with weak signal.
+2. Run one real week. Add a missed punch, correct a break, and then approve the week after Sunday.
+3. Import the payroll CSV into your payroll process and confirm the columns and overtime split work for you.
+4. Confirm the role rules match how you operate, for example that managers can't see pay rates or quotes and can't correct their own time.
+5. Check the company time zone and the 40-hour overtime threshold in Settings.
+6. Decide on hosting and HTTPS, and where off-site backups go (see OPERATIONS.md).
+7. Tell me what's missing or awkward before Phase 2 verification starts.

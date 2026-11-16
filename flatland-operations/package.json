@@ -8,7 +8,8 @@
     "start": "NODE_ENV=production tsx server/index.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "backup": "tsx server/scripts/backup.ts"
+    "backup": "tsx server/scripts/backup.ts",
+    "test:e2e:phase1": "node tests/e2e/phase1.e2e.cjs"
   },
   "author": "",
   "license": "UNLICENSED",

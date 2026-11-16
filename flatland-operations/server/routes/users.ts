@@ -116,8 +116,7 @@ export function userRoutes(db: DB) {
     const recentJobs = db
       .prepare(
         `SELECT j.id, j.job_number, j.name, j.status, j.scheduled_start,
-                ROUND(COALESCE((SELECT SUM((julianday(COALESCE(t.clock_out_at, strftime('%Y-%m-%dT%H:%M:%fZ','now'))) - julianday(t.clock_in_at)) * 24)
-                   FROM time_entries t WHERE t.job_id = j.id AND t.user_id = ? AND t.status <> 'void'), 0), 2) AS gross_hours
+                ROUND(COALESCE((SELECT SUM(w.worked_minutes) FROM v_time_worked w WHERE w.job_id = j.id AND w.user_id = ?), 0) / 60.0, 2) AS worked_hours
          FROM jobs j WHERE j.id IN (SELECT job_id FROM job_assignments WHERE user_id = ?
                                     UNION SELECT job_id FROM time_entries WHERE user_id = ? AND job_id IS NOT NULL)
          ORDER BY j.scheduled_start DESC LIMIT 25`,
